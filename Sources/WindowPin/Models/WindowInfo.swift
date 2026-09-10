@@ -28,7 +28,7 @@ struct WindowInfo: Identifiable {
     }
 
     var sizeDescription: String {
-        "\(Int(frame.width.rounded())) x \(Int(frame.height.rounded()))"
+        frame.size.displayDescription
     }
 
     var positionDescription: String {

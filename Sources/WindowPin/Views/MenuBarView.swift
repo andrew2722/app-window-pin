@@ -23,27 +23,38 @@ struct MenuBarView: View {
                 PermissionView()
             }
         }
-        .frame(width: 320)
+        .frame(width: Theme.controlWidth)
     }
 
+    /// The panel half, as a single card rather than a heading with a paragraph
+    /// under it — the user's decision here is only ever "open it or not".
     private var panelSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Label("Floating Panel", systemImage: "rectangle.on.rectangle")
-                    .font(.headline)
-                Spacer()
-                Button("Open") { onToggleContentPanel() }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
+        HStack(spacing: Theme.Space.m) {
+            IconTile(symbol: "rectangle.on.rectangle", tint: Theme.brand)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: Theme.Space.s) {
+                    Text("Floating Panel")
+                        .font(.callout.weight(.semibold))
+                    if panelModel.mirror.isMirroring {
+                        StatePill(text: "Mirroring", color: Theme.brandFill, filled: true, onFilled: Theme.onBrandFill)
+                    }
+                }
+                Text(statusText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
-            Text(statusText)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: Theme.Space.xs)
+
+            Button("Open") { onToggleContentPanel() }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.brandFill)
+                .controlSize(.regular)
         }
-        .padding(14)
+        .padding(Theme.Space.l)
     }
 
     private var statusText: String {
@@ -51,9 +62,29 @@ struct MenuBarView: View {
             return "Mirroring \(panelModel.content.label)."
         }
         if panelModel.content.isEmpty {
-            return "Drop a link, image, PDF, video or text into it — or mirror any window. Stays above other apps."
+            return "Drop a link, image, PDF, video or text. Stays above other apps."
         }
         return "Showing \(panelModel.content.label)."
+    }
+}
+
+/// A rounded tile holding a symbol — used wherever a section needs a visual
+/// anchor at its leading edge.
+struct IconTile: View {
+    let symbol: String
+    let tint: Color
+    var size: CGFloat = 34
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: size * 0.28)
+            .fill(tint.opacity(0.15))
+            .frame(width: size, height: size)
+            .overlay {
+                Image(systemName: symbol)
+                    .font(.system(size: size * 0.44, weight: .medium))
+                    .foregroundStyle(tint)
+            }
+            .accessibilityHidden(true)
     }
 }
 

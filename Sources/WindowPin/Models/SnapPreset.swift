@@ -11,17 +11,6 @@ enum PositionPreset: String, CaseIterable, Codable, Identifiable {
 
     var id: String { rawValue }
 
-    /// Two-letter label for the compact preset row in the controller.
-    var shortLabel: String {
-        switch self {
-        case .topLeft: "TL"
-        case .topRight: "TR"
-        case .bottomLeft: "BL"
-        case .bottomRight: "BR"
-        case .center: "Center"
-        }
-    }
-
     var label: String {
         switch self {
         case .topLeft: "Top Left"
@@ -56,6 +45,15 @@ enum SizePreset: Codable, Hashable, CaseIterable, Identifiable {
     var label: String {
         switch self {
         case .widthFraction(let fraction): "\(Int((fraction * 100).rounded()))% width"
+        case .portrait: "Portrait"
+        case .custom: "Custom"
+        }
+    }
+
+    /// Fits the segmented control, where the full label would be truncated.
+    var shortLabel: String {
+        switch self {
+        case .widthFraction(let fraction): "\(Int((fraction * 100).rounded()))%"
         case .portrait: "Portrait"
         case .custom: "Custom"
         }

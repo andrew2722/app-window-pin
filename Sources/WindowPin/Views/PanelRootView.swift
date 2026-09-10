@@ -27,12 +27,9 @@ struct PanelRootView: View {
         }
         .background(.background)
         .overlay {
-            if model.isDropHighlighted {
-                RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(Color.accentColor, lineWidth: 3)
-                    .padding(3)
-            }
+            if model.isDropHighlighted { dropHighlight }
         }
+        .animation(Theme.transition, value: model.isDropHighlighted)
         .onDrop(of: DropIntakeService.acceptedTypes,
                 isTargeted: dropHighlightBinding) { providers in
             model.accept(providers: providers)
@@ -55,41 +52,59 @@ struct PanelRootView: View {
     // MARK: - Chrome
 
     private var toolbar: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Theme.Space.s) {
+            Image(systemName: model.content.symbolName)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+
             Text(model.content.label)
                 .font(.caption.weight(.medium))
                 .lineLimit(1)
                 .truncationMode(.middle)
-            Spacer(minLength: 4)
+
+            Spacer(minLength: Theme.Space.xs)
 
             if model.mirror.isMirroring {
-                Button {
+                IconButton(symbol: "arrow.up.forward.app",
+                           label: "Bring the real window to the front") {
                     model.goToMirroredWindow()
-                } label: {
-                    Image(systemName: "arrow.up.forward.app")
                 }
-                .help("Bring the real window to the front to interact with it")
             }
 
-            Button {
+            IconButton(symbol: "macwindow.on.rectangle", label: "Mirror a window") {
                 Task { await model.presentWindowChooser() }
-            } label: {
-                Image(systemName: "macwindow.on.rectangle")
             }
-            .help("Mirror a window")
 
             if !model.content.isEmpty {
-                Button {
+                IconButton(symbol: "xmark", label: "Clear the panel") {
                     Task { await model.clear() }
-                } label: {
-                    Image(systemName: "xmark.circle")
                 }
-                .help("Clear")
             }
         }
-        .buttonStyle(.borderless)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, Theme.Space.s)
+        .padding(.vertical, Theme.Space.xs)
+        .background(.bar)
+    }
+
+    /// Shown while a drag hovers the panel. A ring alone left the user guessing
+    /// whether the panel would actually take what they were holding.
+    private var dropHighlight: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: Theme.Radius.card)
+                .fill(Theme.brand.opacity(0.12))
+            RoundedRectangle(cornerRadius: Theme.Radius.card)
+                .strokeBorder(Theme.brand, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+            Label("Drop to open", systemImage: "arrow.down.circle.fill")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, Theme.Space.m)
+                .padding(.vertical, Theme.Space.s)
+                .background(Theme.brand, in: .capsule)
+        }
+        .padding(Theme.Space.xs)
+        .transition(.opacity)
+        .allowsHitTesting(false)
     }
 
     // MARK: - Content
@@ -126,19 +141,26 @@ struct PanelRootView: View {
     }
 
     private var dropZone: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "arrow.down.doc")
-                .font(.system(size: 28))
-                .foregroundStyle(.tertiary)
-            Text("Drop anything here")
-                .font(.callout.weight(.medium))
-            Text("A link, image, PDF, video, or text.\nLinks open here and stay interactive.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+        VStack(spacing: Theme.Space.m) {
+            IconTile(symbol: "arrow.down.doc", tint: Theme.brand, size: 52)
+
+            VStack(spacing: Theme.Space.xs) {
+                Text("Drop anything here")
+                    .font(.headline)
+                Text("A link, image, PDF, video or text.\nLinks stay interactive — you can click and type in them.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(20)
+        .padding(Theme.Space.xl)
+        .background {
+            RoundedRectangle(cornerRadius: Theme.Radius.card)
+                .strokeBorder(Theme.hairline, style: StrokeStyle(lineWidth: 1.5, dash: [7, 5]))
+                .padding(Theme.Space.m)
+        }
     }
 
     @ViewBuilder
@@ -172,56 +194,49 @@ struct PanelRootView: View {
     private var keyboardHint: some View {
         Text("Keys go through: space ← → f m · click to open the real window")
             .font(.caption2)
-            .foregroundStyle(.white.opacity(0.85))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(.black.opacity(0.55), in: .capsule)
-            .padding(.bottom, 8)
+            .foregroundStyle(.white.opacity(0.9))
+            .padding(.horizontal, Theme.Space.m)
+            .padding(.vertical, Theme.Space.xs)
+            .background(.black.opacity(0.6), in: .capsule)
+            .padding(.bottom, Theme.Space.m)
     }
 
     /// Navigation failures get the same visible treatment as a failed image or
     /// a failed mirror, rather than leaving a blank page.
     private func webErrorBanner(_ error: String) -> some View {
-        Label(error, systemImage: "exclamationmark.triangle")
+        Label(error, systemImage: "exclamationmark.triangle.fill")
             .font(.caption)
+            .foregroundStyle(Theme.danger)
             .lineLimit(2)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.horizontal, Theme.Space.m)
+            .padding(.vertical, Theme.Space.s)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.orange.opacity(0.18))
+            .background(.regularMaterial)
     }
 
     /// Covers the mirror until the first frame arrives, and explains it if none
     /// ever does. Which case applies is decided by what macOS actually gives us,
     /// not by guessing up front whether the window is capturable.
     private func waitingOverlay(_ window: MirroredWindow) -> some View {
-        VStack(spacing: 10) {
+        VStack(spacing: Theme.Space.m) {
             if model.mirror.windowClosed {
-                Image(systemName: "xmark.rectangle")
-                    .font(.system(size: 26))
-                    .foregroundStyle(.tertiary)
-                Text("That window has closed")
-                    .font(.callout.weight(.medium))
+                StatusMessage(symbol: "xmark.rectangle",
+                              title: "That window has closed")
                 Button("Pick another") { Task { await model.presentWindowChooser() } }
-                    .font(.caption)
+                    .controlSize(.small)
             } else if model.mirror.movedToAnotherDesktop {
-                Image(systemName: "rectangle.on.rectangle.slash")
-                    .font(.system(size: 26))
-                    .foregroundStyle(.tertiary)
-                Text("\(window.appName) isn't on this Desktop")
-                    .font(.callout.weight(.medium))
-                    .multilineTextAlignment(.center)
-                Text("macOS only draws the Desktop you're viewing, so there are no frames to mirror from here.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack {
+                StatusMessage(
+                    symbol: "rectangle.on.rectangle.slash",
+                    title: "\(window.appName) isn't on this Desktop",
+                    message: "macOS only draws the Desktop you're viewing, so there are no frames to mirror from here."
+                )
+                HStack(spacing: Theme.Space.s) {
                     Button("Show it") { Task { await model.reveal(window) } }
                         .buttonStyle(.borderedProminent)
+                        .tint(Theme.brandFill)
                     Button("Pick another") { Task { await model.presentWindowChooser() } }
                 }
-                .font(.caption)
+                .controlSize(.small)
             } else {
                 ProgressView()
                     .controlSize(.small)
@@ -230,17 +245,14 @@ struct PanelRootView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(20)
+        .padding(Theme.Space.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.regularMaterial)
     }
 
     private func message(_ text: String) -> some View {
-        Text(text)
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
-            .padding(20)
+        StatusMessage(symbol: "exclamationmark.triangle", title: text, tint: Theme.danger)
+            .padding(Theme.Space.xl)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
@@ -268,52 +280,26 @@ private struct WindowChooserView: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.horizontal, 12)
-                .padding(.top, 10)
+                .padding(.horizontal, Theme.Space.m)
+                .padding(.top, Theme.Space.m)
             }
 
             if !model.screenRecording.isAuthorized {
                 permissionNotice
             } else if candidates.isEmpty {
-                Text("No windows available to mirror.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(12)
+                StatusMessage(symbol: "macwindow",
+                              title: "No windows available to mirror")
+                    .padding(Theme.Space.m)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 2) {
                         ForEach(candidates) { candidate in
-                            Button {
+                            MirrorCandidateRow(candidate: candidate) {
                                 Task { await model.mirror(candidate) }
-                            } label: {
-                                VStack(alignment: .leading, spacing: 1) {
-                                    HStack(spacing: 4) {
-                                        Text(candidate.appName)
-                                            .font(.callout.weight(.medium))
-                                            .lineLimit(1)
-                                        if !candidate.isOnActiveSpace {
-                                            Text("not on this Desktop")
-                                                .font(.caption2)
-                                                .foregroundStyle(.secondary)
-                                                .padding(.horizontal, 5)
-                                                .padding(.vertical, 1)
-                                                .background(.quaternary, in: .capsule)
-                                        }
-                                    }
-                                    Text(candidate.displayTitle)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 5)
-                                .contentShape(.rect)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
-                    .padding(.horizontal, 8)
+                    .padding(Theme.Space.s)
                 }
             }
         }
@@ -321,26 +307,98 @@ private struct WindowChooserView: View {
     }
 
     private var permissionNotice: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("Screen Recording access needed", systemImage: "lock.shield")
-                .font(.caption.weight(.semibold))
-            Text("Window Pin needs Screen Recording access to mirror another app's window.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: Theme.Space.m) {
+            HStack(spacing: Theme.Space.m) {
+                IconTile(symbol: "lock.shield.fill", tint: Theme.brand)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Screen Recording access needed")
+                        .font(.callout.weight(.semibold))
+                    Text("Required to mirror another app's window.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
             if model.screenRecording.needsRelaunchNotice {
-                Text("After enabling it, quit and reopen Window Pin — macOS only re-reads this permission at launch.")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
+                Label("After enabling it, quit and reopen Window Pin — macOS only re-reads this permission at launch.",
+                      systemImage: "arrow.clockwise.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(Theme.pin)
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(Theme.Space.s)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Theme.pin.opacity(0.12), in: .rect(cornerRadius: Theme.Radius.row))
             }
-            HStack {
+
+            HStack(spacing: Theme.Space.s) {
                 Button("Open Settings") { model.screenRecording.openSettings() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.brandFill)
                 Button("Recheck") { Task { await model.presentWindowChooser() } }
+                Spacer(minLength: 0)
             }
-            .font(.caption)
+            .controlSize(.small)
         }
-        .padding(12)
+        .padding(Theme.Space.m)
+    }
+}
+
+/// One mirrorable window in the chooser.
+private struct MirrorCandidateRow: View {
+    let candidate: MirroredWindow
+    var action: () -> Void
+
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: Theme.Space.s) {
+                if let image = AppIcon.forProcess(candidate.pid) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .frame(width: 20, height: 20)
+                } else {
+                    Image(systemName: "macwindow")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 20, height: 20)
+                }
+
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(candidate.appName)
+                        .font(.callout.weight(.medium))
+                        .lineLimit(1)
+                    Text(candidate.displayTitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Spacer(minLength: Theme.Space.xs)
+
+                // Mirroring only produces frames for the Desktop being viewed,
+                // so the ones that cannot work say so before they are picked.
+                if !candidate.isOnActiveSpace {
+                    Text("other Desktop")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.quaternary, in: .capsule)
+                }
+            }
+            .padding(.horizontal, Theme.Space.s)
+            .frame(height: Theme.rowHeight)
+            .background(hovering ? Theme.surfaceHover : .clear,
+                        in: .rect(cornerRadius: Theme.Radius.row))
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(Theme.transition, value: hovering)
+        .accessibilityLabel("Mirror \(candidate.appName), \(candidate.displayTitle)")
     }
 }
 

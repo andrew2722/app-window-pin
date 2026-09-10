@@ -27,36 +27,34 @@ struct WebNavigationBar: View {
     @FocusState private var addressFocused: Bool
 
     var body: some View {
-        HStack(spacing: 4) {
-            Button { session.goBack() } label: { Image(systemName: "chevron.left") }
+        HStack(spacing: Theme.Space.xs) {
+            IconButton(symbol: "chevron.left", label: "Back") { session.goBack() }
                 .disabled(!session.canGoBack)
-                .help("Back")
 
-            Button { session.goForward() } label: { Image(systemName: "chevron.right") }
+            IconButton(symbol: "chevron.right", label: "Forward") { session.goForward() }
                 .disabled(!session.canGoForward)
-                .help("Forward")
 
-            Button { session.reloadOrStop() } label: {
-                Image(systemName: session.isLoading ? "xmark" : "arrow.clockwise")
+            IconButton(symbol: session.isLoading ? "xmark" : "arrow.clockwise",
+                       label: session.isLoading ? "Stop" : "Reload") {
+                session.reloadOrStop()
             }
-            .help(session.isLoading ? "Stop" : "Reload")
 
             TextField("Enter a link or search", text: $session.addressText)
                 .textFieldStyle(.roundedBorder)
                 .font(.caption)
                 .focused($addressFocused)
+                .accessibilityLabel("Address")
                 .onSubmit {
                     onSubmit()
                     addressFocused = false
                 }
 
-            Button(action: onMirrorInstead) {
-                Image(systemName: "macwindow.on.rectangle")
-            }
-            .help("Signed-in page? Mirror the real browser window instead")
+            IconButton(symbol: "macwindow.on.rectangle",
+                       label: "Signed-in page? Mirror the real browser window instead",
+                       action: onMirrorInstead)
         }
-        .buttonStyle(.borderless)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
+        .padding(.horizontal, Theme.Space.s)
+        .padding(.vertical, Theme.Space.xs)
+        .background(.bar)
     }
 }

@@ -58,4 +58,19 @@ enum PanelContent {
         case .chooseWindow: "Choose a window"
         }
     }
+
+    /// Symbol shown beside the label in the panel's toolbar, so the panel says
+    /// what kind of thing it is holding without reading the filename.
+    var symbolName: String {
+        switch self {
+        case .empty: "tray"
+        case .image: "photo"
+        case .pdf: "doc.richtext"
+        case .media: "play.rectangle"
+        case .text: "text.alignleft"
+        case .web: "globe"
+        case .mirror: "rectangle.on.rectangle"
+        case .chooseWindow: "macwindow.on.rectangle"
+        }
+    }
 }

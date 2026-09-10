@@ -5,71 +5,98 @@ struct WindowPickerView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Windows")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button {
-                    model.refresh()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .buttonStyle(.borderless)
-                .help("Refresh window list")
+        PanelSection("Windows") {
+            IconButton(symbol: "arrow.clockwise", label: "Refresh window list") {
+                model.refresh()
             }
-
+        } content: {
             if model.discovery.windows.isEmpty {
-                Text("No windows found. Open an app with a visible window, then refresh.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 8)
+                StatusMessage(
+                    symbol: "macwindow",
+                    title: "No windows found",
+                    message: "Open an app with a visible window, then refresh."
+                )
+                .background(Theme.surface, in: .rect(cornerRadius: Theme.Radius.card))
             } else {
                 ScrollView {
                     LazyVStack(spacing: 2) {
                         ForEach(model.discovery.windows) { window in
                             WindowRow(window: window, isSelected: window.id == model.selectedWindowID)
-                                .contentShape(.rect)
                                 .onTapGesture { model.select(window) }
                         }
                     }
+                    .padding(Theme.Space.xs)
                 }
-                .frame(height: 168)
+                // Sized to show roughly four rows: enough to scan without the
+                // popover growing taller than the screen on a busy desktop.
+                .frame(height: Theme.rowHeight * 4 + Theme.Space.s)
+                .background(Theme.surface, in: .rect(cornerRadius: Theme.Radius.card))
             }
         }
     }
 }
 
+/// One window in the picker: who owns it, what it is, and how big it is.
 private struct WindowRow: View {
     let window: WindowInfo
     let isSelected: Bool
 
+    @State private var hovering = false
+
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            VStack(alignment: .leading, spacing: 1) {
+        HStack(spacing: Theme.Space.s) {
+            icon
+
+            VStack(alignment: .leading, spacing: 0) {
                 Text(window.appName)
                     .font(.callout.weight(.medium))
                     .lineLimit(1)
                 Text(window.displayTitle)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(isSelected ? .white.opacity(0.9) : .secondary)
                     .lineLimit(1)
+                    .truncationMode(.middle)
             }
-            Spacer(minLength: 4)
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(window.sizeDescription)
-                    .font(.caption.monospacedDigit())
-                Text(window.positionDescription)
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.tertiary)
-            }
+
+            Spacer(minLength: Theme.Space.xs)
+
+            Text(window.sizeDescription)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(isSelected ? .white.opacity(0.9) : .secondary)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(isSelected ? Color.accentColor.opacity(0.18) : Color.clear,
-                    in: .rect(cornerRadius: 6))
-        .help("PID \(window.pid)" + (window.windowNumber.map { " · window #\($0)" } ?? ""))
+        .foregroundStyle(isSelected ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+        .padding(.horizontal, Theme.Space.s)
+        .frame(height: Theme.rowHeight)
+        .background(background, in: .rect(cornerRadius: Theme.Radius.row))
+        .contentShape(.rect)
+        .onHover { hovering = $0 }
+        .animation(Theme.transition, value: isSelected)
+        .animation(Theme.transition, value: hovering)
+        .help("\(window.appName) — \(window.displayTitle) at \(window.positionDescription)")
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(window.appName), \(window.displayTitle), \(window.sizeDescription)")
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    @ViewBuilder
+    private var icon: some View {
+        if let image = AppIcon.forProcess(window.pid) {
+            Image(nsImage: image)
+                .resizable()
+                .frame(width: 20, height: 20)
+        } else {
+            // Keeps every row's text on the same left edge whether or not the
+            // icon could be resolved.
+            Image(systemName: "macwindow")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .frame(width: 20, height: 20)
+        }
+    }
+
+    private var background: AnyShapeStyle {
+        if isSelected { return AnyShapeStyle(Theme.brandFill) }
+        if hovering { return AnyShapeStyle(Theme.surfaceHover) }
+        return AnyShapeStyle(Color.clear)
     }
 }

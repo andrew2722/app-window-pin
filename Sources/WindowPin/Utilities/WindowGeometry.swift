@@ -72,3 +72,14 @@ enum WindowGeometry {
         return intersection.width * intersection.height
     }
 }
+
+extension CGSize {
+    /// How a window size is written everywhere in the interface.
+    ///
+    /// Built as a plain `String` on purpose: handing the numbers to `Text`'s
+    /// localized interpolation instead would group them ("1,440"), and the two
+    /// places that show a size would disagree on the format.
+    var displayDescription: String {
+        "\(Int(width.rounded())) × \(Int(height.rounded()))"
+    }
+}

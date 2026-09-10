@@ -54,6 +54,11 @@ final class AppModel {
         pinService.state.pinnedWindow?.frame ?? selectedWindow?.frame
     }
 
+    /// Owning process of the active window, so the UI can show its app icon.
+    var activePID: pid_t? {
+        pinService.state.pinnedWindow?.pid ?? selectedWindow?.pid
+    }
+
     var canPin: Bool {
         accessibility.isTrusted && selectedWindow != nil && !pinService.state.isPinned
     }
