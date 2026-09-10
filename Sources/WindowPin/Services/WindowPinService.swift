@@ -28,6 +28,14 @@ final class WindowPinService {
         observeSystemEvents()
     }
 
+    #if PREVIEW
+    /// Puts the service into a given state for the preview harness, without
+    /// touching a real window.
+    func seedForPreview(_ state: PinState) {
+        self.state = state
+    }
+    #endif
+
     // MARK: - Pinning
 
     /// Pins `window`, holding it at `frame` (AppKit coordinates). Passing `nil`

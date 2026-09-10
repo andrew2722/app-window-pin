@@ -8,6 +8,10 @@ build:
 assets:
 	./Scripts/make-assets.sh
 
+# Render the interface to build/preview/*.png for visual review.
+preview:
+	./Scripts/preview.sh
+
 # Assemble the signed .app bundle that macOS will grant Accessibility to.
 app:
 	./Scripts/build-app.sh

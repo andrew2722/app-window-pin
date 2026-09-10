@@ -8,13 +8,21 @@ import SwiftUI
 /// window manager on macOS already uses.
 struct PositionGrid: View {
     @Binding var selection: PositionPreset?
+    /// The chosen size, so each miniature shows the frame that will actually
+    /// result rather than a generic quadrant.
+    var size: SizePreset
+    /// Width and height used when `size == .custom`.
+    var referenceSize: CGSize
     var isEnabled: Bool
     var onSelect: (PositionPreset) -> Void
 
     var body: some View {
         HStack(spacing: Theme.Space.s) {
             ForEach(PositionPreset.allCases) { preset in
-                PositionThumbnail(preset: preset, isSelected: selection == preset)
+                PositionThumbnail(preset: preset,
+                                  size: size,
+                                  referenceSize: referenceSize,
+                                  isSelected: selection == preset)
                     .onTapGesture {
                         guard isEnabled else { return }
                         onSelect(preset)
@@ -27,6 +35,8 @@ struct PositionGrid: View {
 
 private struct PositionThumbnail: View {
     let preset: PositionPreset
+    let size: SizePreset
+    let referenceSize: CGSize
     let isSelected: Bool
 
     @State private var hovering = false
@@ -73,24 +83,33 @@ private struct PositionThumbnail: View {
         }
     }
 
-    /// Mirrors what the snap actually does: corners take a quadrant, centre
-    /// takes a smaller block floating in the middle.
+    /// The frame the snap will actually produce, expressed as a fraction of the
+    /// screen.
+    ///
+    /// This runs the same `ScreenService` calculation the window itself goes
+    /// through, so the miniature cannot drift from the result. It used to draw
+    /// a fixed quadrant for every preset, which meant choosing "50% width" or
+    /// "Portrait" showed a picture of something that was never going to happen.
     private func frame(in area: CGRect) -> CGRect {
-        let half = CGSize(width: area.width / 2, height: area.height / 2)
-        switch preset {
-        case .topLeft:
-            return CGRect(origin: CGPoint(x: area.minX, y: area.minY), size: half)
-        case .topRight:
-            return CGRect(origin: CGPoint(x: area.midX, y: area.minY), size: half)
-        case .bottomLeft:
-            return CGRect(origin: CGPoint(x: area.minX, y: area.midY), size: half)
-        case .bottomRight:
-            return CGRect(origin: CGPoint(x: area.midX, y: area.midY), size: half)
-        case .center:
-            let size = CGSize(width: area.width * 0.56, height: area.height * 0.62)
-            return CGRect(x: area.midX - size.width / 2,
-                          y: area.midY - size.height / 2,
-                          width: size.width, height: size.height)
-        }
+        guard let screen = ScreenService.primary else { return area }
+        let bounds = screen.visibleFrame
+        guard bounds.width > 0, bounds.height > 0 else { return area }
+
+        let snapped = ScreenService.frame(position: preset,
+                                          size: size,
+                                          on: screen,
+                                          currentSize: referenceSize)
+
+        // AppKit counts y upward and the miniature draws downward, so the
+        // vertical fraction is measured from the top edge.
+        let unit = CGRect(x: (snapped.minX - bounds.minX) / bounds.width,
+                          y: (bounds.maxY - snapped.maxY) / bounds.height,
+                          width: snapped.width / bounds.width,
+                          height: snapped.height / bounds.height)
+
+        return CGRect(x: area.minX + unit.minX * area.width,
+                      y: area.minY + unit.minY * area.height,
+                      width: max(3, unit.width * area.width),
+                      height: max(3, unit.height * area.height))
     }
 }

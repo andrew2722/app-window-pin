@@ -124,39 +124,40 @@ struct ControllerView: View {
         }
     }
 
+    /// One line about the window the controls act on.
+    ///
+    /// It used to repeat the app name, title and size already shown in the
+    /// highlighted row directly above — three facts twice, for about 76pt of
+    /// height. What is genuinely new once a window is pinned is the frame being
+    /// held, so that is what it shows now.
     @ViewBuilder
     private var targetCard: some View {
         let isPinned = model.pinService.state.isPinned
 
         HStack(spacing: Theme.Space.s) {
             if let appName = model.activeAppName {
-                if let pid = model.activePID, let image = AppIcon.forProcess(pid) {
-                    Image(nsImage: image)
-                        .resizable()
-                        .frame(width: 26, height: 26)
-                }
+                Image(systemName: isPinned ? "pin.fill" : "hand.tap")
+                    .font(.caption)
+                    .foregroundStyle(isPinned ? Theme.pin : Color.secondary)
 
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(appName)
-                        .font(.callout.weight(.semibold))
-                        .lineLimit(1)
-                    Text(model.activeTitle.flatMap { $0.isEmpty ? nil : $0 } ?? "Untitled window")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
+                Text(isPinned ? "Holding \(appName)" : appName)
+                    .font(.callout.weight(.medium))
+                    .lineLimit(1)
 
                 Spacer(minLength: Theme.Space.xs)
 
                 if let frame = model.activeFrame {
-                    Text(frame.size.displayDescription)
+                    // One line: wrapping here pushes the row past its own height
+                    // and breaks the rhythm the rest of the panel keeps.
+                    Text(isPinned ? frameSummary(frame) : frame.size.displayDescription)
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .fixedSize()
                 }
             } else {
                 Image(systemName: "hand.point.up.left")
-                    .font(.callout)
+                    .font(.caption)
                     .foregroundStyle(.tertiary)
                 Text("Select a window above")
                     .font(.callout)
@@ -164,7 +165,8 @@ struct ControllerView: View {
                 Spacer(minLength: 0)
             }
         }
-        .padding(Theme.Space.m)
+        .padding(.horizontal, Theme.Space.m)
+        .frame(height: Theme.rowHeight, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(isPinned ? AnyShapeStyle(Theme.pin.opacity(0.12)) : AnyShapeStyle(Theme.surface),
                     in: .rect(cornerRadius: Theme.Radius.card))
@@ -172,6 +174,15 @@ struct ControllerView: View {
             RoundedRectangle(cornerRadius: Theme.Radius.card)
                 .strokeBorder(isPinned ? Theme.pin.opacity(0.45) : .clear, lineWidth: 1)
         }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// Where the window is being held, in the same words the position control
+    /// uses, plus the size — the two things the pin is actually enforcing.
+    private func frameSummary(_ frame: CGRect) -> String {
+        let size = frame.size.displayDescription
+        guard let position = model.position else { return size }
+        return "\(position.label) · \(size)"
     }
 
     @ViewBuilder
@@ -183,6 +194,11 @@ struct ControllerView: View {
                 Label("Unpin", systemImage: "pin.slash.fill")
                     .frame(maxWidth: .infinity)
             }
+            // While a window is held, letting it go is the only thing this
+            // screen is for, so it carries the emphasis the Pin button had.
+            .buttonStyle(.borderedProminent)
+            .tint(Theme.pinFill)
+            .foregroundStyle(Theme.onPinFill)
             .controlSize(.large)
         } else {
             Button {
@@ -205,6 +221,9 @@ struct ControllerView: View {
             PanelSection(model.position.map { "Position · \($0.label)" } ?? "Position") {
                 PositionGrid(
                     selection: .constant(model.position),
+                    size: model.size,
+                    referenceSize: model.size == .custom ? model.customSize
+                                                         : (model.activeFrame?.size ?? .zero),
                     isEnabled: model.activeFrame != nil,
                     onSelect: { model.applySnap(position: $0) }
                 )
@@ -219,6 +238,15 @@ struct ControllerView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+                // Left native. A segmented control's grey selection is the
+                // macOS convention, and `.tint` does not change it here — the
+                // position grid is custom only because it has to show a picture
+                // of the result, which no system control can do.
+                // Tinted deliberately: left alone, the selected segment picks
+                // up the system accent colour, so on a Mac set to (say) yellow
+                // the segment and the selected window row — right above it —
+                // disagree about what "selected" looks like.
+                .tint(Theme.brandFill)
 
                 if model.size == .custom {
                     customSizeFields
@@ -240,11 +268,11 @@ struct ControllerView: View {
 
     private var customSizeFields: some View {
         HStack(spacing: Theme.Space.s) {
-            TextField("Width", value: dimension(\.width), format: .number.precision(.fractionLength(0)))
+            TextField("Width", value: dimension(\.width), format: .number.precision(.fractionLength(0)).grouping(.never))
                 .frame(width: 68)
                 .accessibilityLabel("Custom width")
             Text("×").foregroundStyle(.secondary)
-            TextField("Height", value: dimension(\.height), format: .number.precision(.fractionLength(0)))
+            TextField("Height", value: dimension(\.height), format: .number.precision(.fractionLength(0)).grouping(.never))
                 .frame(width: 68)
                 .accessibilityLabel("Custom height")
             Spacer(minLength: 0)

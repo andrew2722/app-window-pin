@@ -18,7 +18,7 @@ while IFS= read -r file; do
 done < <(find "${ROOT}/Sources/WindowPin" -name '*.swift' | sort)
 
 mkdir -p "${OUT}"
-swiftc -O "${ROOT}/Scripts/preview-harness.swift" "${SOURCES[@]}" -o "${TOOL}"
+swiftc -D PREVIEW -O "${ROOT}/Scripts/preview-harness.swift" "${SOURCES[@]}" -o "${TOOL}"
 "${TOOL}" "${OUT}"
 
 echo

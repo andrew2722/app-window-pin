@@ -47,6 +47,14 @@ final class WindowDiscoveryService {
         Log.discovery.info("Discovered \(self.windows.count, privacy: .public) window(s)")
     }
 
+    #if PREVIEW
+    /// Fills the list for the preview harness, which is not trusted for
+    /// Accessibility and would otherwise render every screen empty.
+    func seedForPreview(_ windows: [WindowInfo]) {
+        self.windows = windows
+    }
+    #endif
+
     /// Finds a window matching a previously pinned one after its app restarted.
     /// Title is the only durable hint we have, so an exact title match wins and
     /// a single-window app is accepted as an unambiguous fallback.

@@ -87,13 +87,14 @@ moment it is granted — it never re-prompts in a loop.
 5. The window now holds that frame. Move it and it snaps back.
 6. Click **Unpin** to stop. The window stays wherever it currently is.
 
-**Presets.** Positions: TL, TR, BL, BR, Center. Sizes: 25% / 33% / 50% of the
-display width (full usable height), Portrait (420 × 700), and Custom (type your
-own width and height). Choosing a size without a position resizes the window
+**Presets.** Position is a row of screen thumbnails — click the one showing
+where you want the window: the four corners or centred. Sizes: 25% / 33% / 50%
+of the display width (full usable height), Portrait (420 × 700), and Custom
+(type your own width and height). Choosing a size without a position resizes the window
 where it already sits. All frames are computed from `NSScreen.visibleFrame`, so
 the menu bar and Dock are respected automatically.
 
-**Show Controller** opens the same controls in a floating panel that does not
+**Detach Controller** opens the same controls in a floating panel that does not
 close when you click another app — handy while arranging windows.
 
 ## Using the floating panel

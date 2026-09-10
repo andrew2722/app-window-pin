@@ -39,7 +39,12 @@ private func render<V: View>(_ view: V, width: CGFloat, scheme: ColorScheme,
     // reports itself active, and SwiftUI greys out prominent buttons and
     // selected segments whenever it is not — which would show every primary
     // action in the wrong state.
+    // The capture reads pixels back out of the hosting view, not the window,
+    // so the window's own background never reaches the image. Views that rely
+    // on their container for a backdrop — the popover supplies one in the app —
+    // would be captured over nothing and come out as white text on white.
     let hosting = NSHostingView(rootView: view.frame(width: width)
+        .background(Color(nsColor: .windowBackgroundColor))
         .environment(\.colorScheme, scheme)
         .environment(\.controlActiveState, .key))
     hosting.appearance = NSAppearance(named: appearance)
@@ -111,70 +116,52 @@ enum PreviewHarness {
 @MainActor
 private enum PreviewScreens {
 
+    /// The real `ControllerView`, driven by a seeded model.
+    ///
+    /// This used to be a hand-built replica of the controller's layout. It
+    /// looked right and was worthless: a change to the shipping view left the
+    /// replica untouched, so the screenshots quietly described a design that no
+    /// longer existed. Rendering the real view is the only version of this that
+    /// cannot lie.
     static var controller: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.l) {
-            HStack(spacing: Theme.Space.s) {
-                Text("Window Pin").font(.headline)
-                Spacer(minLength: 0)
-                StatePill(text: "Pinned", color: Theme.pinFill, filled: true, onFilled: Theme.onPinFill)
-            }
+        let model = seededModel()
+        return ControllerView(showsFloatingPanelButton: true, onToggleFloatingPanel: {})
+            .environment(model)
+    }
 
-            PanelSection("Windows") {
-                IconButton(symbol: "arrow.clockwise", label: "Refresh") {}
-            } content: {
-                VStack(spacing: 2) {
-                    ForEach(Array(Mock.windows.enumerated()), id: \.offset) { index, window in
-                        MockRow(app: window.app, title: window.title,
-                                size: window.size, isSelected: index == 0)
-                    }
-                }
-                .padding(Theme.Space.xs)
-                .background(Theme.surface, in: .rect(cornerRadius: Theme.Radius.card))
-            }
-
-            VStack(spacing: Theme.Space.s) {
-                HStack(spacing: Theme.Space.s) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Google Chrome").font(.callout.weight(.semibold))
-                        Text("Gmail — Inbox (12)").font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: Theme.Space.xs)
-                    Text(CGSize(width: 1440, height: 900).displayDescription).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                }
-                .padding(Theme.Space.m)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Theme.pin.opacity(0.12), in: .rect(cornerRadius: Theme.Radius.card))
-                .overlay {
-                    RoundedRectangle(cornerRadius: Theme.Radius.card)
-                        .strokeBorder(Theme.pin.opacity(0.45), lineWidth: 1)
-                }
-
-                Button {} label: {
-                    Label("Unpin", systemImage: "pin.slash.fill").frame(maxWidth: .infinity)
-                }
-                .controlSize(.large)
-            }
-
-            PanelSection("Position · Bottom Right") {
-                PositionGrid(selection: .constant(.bottomRight), isEnabled: true) { _ in }
-            }
-
-            PanelSection("Size") {
-                Picker("Size", selection: .constant(SizePreset.portrait)) {
-                    ForEach(SizePreset.allCases) { Text($0.shortLabel).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-            }
-
-            HStack {
-                QuietButton(title: "Detach Controller") {}
-                Spacer(minLength: 0)
-                QuietButton(title: "Quit") {}
-            }
+    /// An `AppModel` holding a pinned window, without touching Accessibility.
+    private static func seededModel() -> AppModel {
+        let model = AppModel()
+        let pid = ProcessInfo.processInfo.processIdentifier
+        let windows = Mock.windows.map { mock in
+            WindowInfo(
+                handle: AXWindowHandle(element: AXUIElementCreateApplication(pid), pid: pid),
+                pid: pid,
+                bundleIdentifier: "com.example.\(mock.app.replacingOccurrences(of: " ", with: ""))",
+                appName: mock.app,
+                title: mock.title,
+                windowNumber: nil,
+                frame: CGRect(origin: .zero, size: mock.size)
+            )
         }
-        .padding(Theme.Space.l)
-        .background(Color(nsColor: .windowBackgroundColor))
+        model.discovery.seedForPreview(windows)
+
+        if let first = windows.first {
+            model.selectedWindowID = first.id
+            model.pinService.seedForPreview(.pinned(PinnedWindow(
+                handle: first.handle,
+                pid: first.pid,
+                bundleIdentifier: first.bundleIdentifier,
+                appName: first.appName,
+                title: first.title,
+                windowNumber: nil,
+                frame: CGRect(x: 0, y: 0, width: 756, height: 949),
+                displayUUID: nil
+            )))
+        }
+        model.position = .bottomRight
+        model.size = .widthFraction(0.5)
+        return model
     }
 
     static var permission: some View {
