@@ -27,8 +27,46 @@ enum LaunchGuard {
             handleTranslocation()
             return false
         }
+        if let running = otherRunningInstance() {
+            handleAlreadyRunning(running)
+            return false
+        }
         presentIntroductionIfFirstLaunch()
         return true
+    }
+
+    // MARK: - One instance
+
+    /// Another copy of this app that is already running properly.
+    ///
+    /// Nothing stopped a second copy before, and because the app is invisible
+    /// apart from a menu bar icon that is easy to miss, people open it again —
+    /// five launches in twenty-six seconds in one log. Two instances mean two
+    /// menu bar icons and two pin services pulling the same window towards two
+    /// different remembered frames.
+    ///
+    /// Translocated copies are ignored: one may be mid-handover, having just
+    /// installed this very instance and be about to quit.
+    private static func otherRunningInstance() -> NSRunningApplication? {
+        guard let bundleID = Bundle.main.bundleIdentifier else { return nil }
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        return NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first {
+            $0.processIdentifier != ownPID
+                && !($0.bundleURL?.path.contains("/AppTranslocation/") ?? false)
+        }
+    }
+
+    /// Hands over to the copy that is already running and quits.
+    ///
+    /// No dialog: LaunchServices already refuses to start a second process for
+    /// the same bundle identifier, so this only fires for copies it treats as
+    /// distinct — a renamed duplicate, or a translocated one. Silently handing
+    /// over is what macOS does when you open an app that is already open, and a
+    /// modal presented this early in launch does not display anyway.
+    private static func handleAlreadyRunning(_ instance: NSRunningApplication) {
+        Log.accessibility.notice("Another instance is already running; handing over to it")
+        instance.activate()
+        NSApp.terminate(nil)
     }
 
     // MARK: - Translocation
@@ -103,6 +141,16 @@ enum LaunchGuard {
         }
 
         let destination = directory.appendingPathComponent(source.lastPathComponent)
+
+        // Replacing a bundle while it is executing pulls the code out from
+        // under the running process. If a copy is already installed and live,
+        // that copy is the one the user wants — hand over to it instead.
+        if let installed = runningInstance(at: destination) {
+            installed.activate()
+            NSApp.terminate(nil)
+            return destination
+        }
+
         if fileManager.fileExists(atPath: destination.path) {
             try fileManager.removeItem(at: destination)
         }
@@ -113,6 +161,16 @@ enum LaunchGuard {
         // clears this when *it* moves an app; we have to do it ourselves.
         clearQuarantine(at: destination)
         return destination
+    }
+
+    /// A running instance whose bundle is exactly `url`.
+    private static func runningInstance(at url: URL) -> NSRunningApplication? {
+        guard let bundleID = Bundle.main.bundleIdentifier else { return nil }
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        return NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first {
+            $0.processIdentifier != ownPID
+                && $0.bundleURL?.standardizedFileURL == url.standardizedFileURL
+        }
     }
 
     private static func clearQuarantine(at url: URL) {
@@ -136,7 +194,6 @@ enum LaunchGuard {
     private static func presentIntroductionIfFirstLaunch() {
         let defaults = UserDefaults.standard
         guard !defaults.bool(forKey: hasIntroducedKey) else { return }
-        defaults.set(true, forKey: hasIntroducedKey)
 
         let alert = NSAlert()
         alert.messageText = "Window Pin is running in your menu bar"
@@ -151,5 +208,10 @@ enum LaunchGuard {
 
         NSApp.activate(ignoringOtherApps: true)
         alert.runModal()
+
+        // Marked as shown only once it has been. Setting the flag first would
+        // burn the one introduction the user gets if the alert ever failed to
+        // display — which is exactly what happened on the already-running path.
+        defaults.set(true, forKey: hasIntroducedKey)
     }
 }

@@ -132,9 +132,16 @@ private enum PreviewScreens {
     /// An `AppModel` holding a pinned window, without touching Accessibility.
     private static func seededModel() -> AppModel {
         let model = AppModel()
-        let pid = ProcessInfo.processInfo.processIdentifier
-        let windows = Mock.windows.map { mock in
-            WindowInfo(
+        // A distinct pid per row on purpose. `WindowInfo.id` hashes the
+        // Accessibility element, and `AXUIElementCreateApplication` returns an
+        // equal element for an equal pid — so reusing one pid gave all four
+        // rows the same id and `ForEach` drew only the first.
+        //
+        // These pids belong to nothing, which also keeps the harness's own
+        // application icon out of the rows.
+        let windows = Mock.windows.enumerated().map { index, mock in
+            let pid = pid_t(90_000 + index)
+            return WindowInfo(
                 handle: AXWindowHandle(element: AXUIElementCreateApplication(pid), pid: pid),
                 pid: pid,
                 bundleIdentifier: "com.example.\(mock.app.replacingOccurrences(of: " ", with: ""))",

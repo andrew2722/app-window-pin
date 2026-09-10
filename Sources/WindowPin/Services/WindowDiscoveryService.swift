@@ -20,6 +20,15 @@ final class WindowDiscoveryService {
     /// never on a timer — enumerating every app is the expensive operation in
     /// this app and there is no reason to do it in the background.
     func refresh() {
+        #if PREVIEW
+        // `ControllerView` refreshes on appear, and a harness launched from a
+        // terminal that holds Accessibility trust inherits it — so that call
+        // silently replaced the seeded windows with whatever the developer had
+        // open. That made captures non-reproducible, and leaked real window
+        // titles into PNGs that get published on the download page.
+        if isPreviewSeeded { return }
+        #endif
+
         guard AXIsProcessTrusted() else {
             windows = []
             return
@@ -48,11 +57,15 @@ final class WindowDiscoveryService {
     }
 
     #if PREVIEW
-    /// Fills the list for the preview harness, which is not trusted for
-    /// Accessibility and would otherwise render every screen empty.
+    /// Fills the list for the preview harness, which is normally not trusted
+    /// for Accessibility and would otherwise render every screen empty.
     func seedForPreview(_ windows: [WindowInfo]) {
         self.windows = windows
+        isPreviewSeeded = true
     }
+
+    /// Seeded data wins over a refresh from here on — see `refresh()`.
+    private var isPreviewSeeded = false
     #endif
 
     /// Finds a window matching a previously pinned one after its app restarted.
