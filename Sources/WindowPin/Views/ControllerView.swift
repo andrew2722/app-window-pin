@@ -303,8 +303,31 @@ struct ControllerView: View {
                 QuietButton(title: "Detach Controller") { onToggleFloatingPanel() }
                     .help("Open the controller in a floating window that stays put while you work")
             }
-            Spacer(minLength: 0)
+
+            Spacer(minLength: Theme.Space.s)
+
+            if let version = Self.appVersion {
+                Text("v\(version)")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+                    .help("The version of Window Pin you are running")
+                    // Read as "Version 1.0.3", not "Version v1.0.3".
+                    .accessibilityLabel("Version \(version)")
+                Spacer(minLength: Theme.Space.s)
+            }
+
             QuietButton(title: "Quit") { NSApplication.shared.terminate(nil) }
         }
+    }
+
+    /// Version string from the bundle, or `nil` outside one.
+    ///
+    /// The preview harness is a bare executable rather than an app bundle, so
+    /// there is nothing to read there — better to omit the label than to leave
+    /// a gap where a version should be.
+    private static var appVersion: String? {
+        guard let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+              !version.isEmpty else { return nil }
+        return version
     }
 }

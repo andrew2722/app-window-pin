@@ -38,7 +38,13 @@ fi
 APP_NAME="WindowPin"
 BUNDLE_ID="com.windowpin.app"
 # Overridable so Scripts/release.sh can stamp the version it is publishing.
-VERSION="${VERSION:-1.0.0}"
+# Otherwise take the latest tag: the app shows its version in the controller,
+# and a hardcoded default meant every development build claimed 1.0.0 no matter
+# how far ahead the source was.
+if [[ -z "${VERSION:-}" ]]; then
+  VERSION="$(git -C "${ROOT}" describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')"
+  VERSION="${VERSION:-0.0.0}"
+fi
 BUILD_NUMBER="1"
 
 ICON_SRC="${ROOT}/Resources/AppIcon.icns"
