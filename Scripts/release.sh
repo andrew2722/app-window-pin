@@ -90,7 +90,16 @@ xcrun notarytool submit "${SUBMIT_ZIP}" --keychain-profile "${KEYCHAIN_PROFILE}"
 grep -q "status: Accepted" /tmp/notary.log || fail "Apple did not accept the build — see /tmp/notary.log"
 ok "accepted"
 
-xcrun stapler staple "${APP}" >/dev/null || fail "could not staple the ticket"
+# Apple accepts the build before the ticket is fetchable, so stapling right
+# after notarization fails with error 73 roughly half the time. Retry rather
+# than abandoning a release that is actually fine.
+STAPLED=0
+for attempt in $(seq 1 8); do
+  if xcrun stapler staple "${APP}" >/dev/null 2>&1; then STAPLED=1; break; fi
+  printf '    ticket not published yet, retrying (%d/8)\n' "${attempt}"
+  sleep 15
+done
+[[ "${STAPLED}" -eq 1 ]] || fail "could not staple the ticket after 8 attempts"
 xcrun stapler validate "${APP}" >/dev/null || fail "stapled ticket does not validate"
 ok "ticket stapled (opens offline)"
 
