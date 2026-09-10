@@ -89,9 +89,30 @@ step "Notarizing (this waits for Apple)"
 SUBMIT_ZIP="${ROOT}/build/WindowPin-submit.zip"
 rm -f "${SUBMIT_ZIP}"
 ditto -c -k --keepParent "${APP}" "${SUBMIT_ZIP}"
-xcrun notarytool submit "${SUBMIT_ZIP}" --keychain-profile "${KEYCHAIN_PROFILE}" --wait 2>&1 \
+# Upload and wait are separated on purpose. `--wait` folds them together, so a
+# dropped connection while waiting (HTTPClientError.connectTimeout) throws away
+# a submission that was uploaded fine and is already being processed.
+xcrun notarytool submit "${SUBMIT_ZIP}" --keychain-profile "${KEYCHAIN_PROFILE}" --no-wait 2>&1 \
   | tee /tmp/notary.log | tail -3
-grep -q "status: Accepted" /tmp/notary.log || fail "Apple did not accept the build — see /tmp/notary.log"
+SUBMISSION_ID="$(sed -n 's/^ *id: \(.*\)$/\1/p' /tmp/notary.log | head -1)"
+[[ -n "${SUBMISSION_ID}" ]] || fail "no submission id returned — see /tmp/notary.log"
+ok "uploaded as ${SUBMISSION_ID}"
+
+NOTARY_STATUS=""
+for attempt in $(seq 1 60); do
+  sleep 10
+  # A transient failure here costs one poll, not the release.
+  INFO="$(xcrun notarytool info "${SUBMISSION_ID}" --keychain-profile "${KEYCHAIN_PROFILE}" 2>&1 || true)"
+  NOTARY_STATUS="$(sed -n 's/^ *status: \(.*\)$/\1/p' <<<"${INFO}" | head -1)"
+  case "${NOTARY_STATUS}" in
+    Accepted) break ;;
+    Invalid|Rejected)
+      xcrun notarytool log "${SUBMISSION_ID}" --keychain-profile "${KEYCHAIN_PROFILE}" 2>&1 | head -40
+      fail "Apple rejected the build (${NOTARY_STATUS})" ;;
+    *) printf '    %s (%d/60)\n' "${NOTARY_STATUS:-waiting}" "${attempt}" ;;
+  esac
+done
+[[ "${NOTARY_STATUS}" == "Accepted" ]] || fail "notarization did not finish in 10 minutes (id ${SUBMISSION_ID})"
 ok "accepted"
 
 # Staple in a scratch directory and copy back. Stapling in place inside the
