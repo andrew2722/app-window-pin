@@ -68,6 +68,18 @@ CODESIGN_IDENTITY="Apple Development: you@example.com (TEAMID)" make app
 
 Other knobs: `CONFIGURATION=debug`, `UNIVERSAL=1` (arm64 + x86_64).
 
+## First launch
+
+Move the app into `Applications` before opening it. macOS runs a quarantined app
+from a randomised read-only copy until it is moved out of Downloads, and because
+that path changes on every launch, permissions granted there are attached to a
+location that will not exist next time. If it does get opened from Downloads,
+Window Pin offers to move itself and reopen from the right place.
+
+There is no Dock icon — the app is the pin in the menu bar, and it says so once
+on first launch. Opening it again while it is already running just hands over to
+the copy that is running.
+
 ## Granting Accessibility access
 
 On first launch the app shows the permission screen and prompts once. Then:

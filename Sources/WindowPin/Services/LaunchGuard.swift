@@ -66,7 +66,18 @@ enum LaunchGuard {
     private static func handleAlreadyRunning(_ instance: NSRunningApplication) {
         Log.accessibility.notice("Another instance is already running; handing over to it")
         instance.activate()
-        NSApp.terminate(nil)
+        quit()
+    }
+
+    /// Ends the process from inside `check()`.
+    ///
+    /// `NSApp.terminate` expects a running event loop, and this runs while the
+    /// `App` struct is still being built — calling it here raises SIGTRAP, so
+    /// the "hand over to the running copy" path *crashed* instead of exiting.
+    /// It went unnoticed because the outcome looks the same to a user, and it
+    /// showed up as a release-script smoke-test failure rather than as itself.
+    private static func quit() -> Never {
+        exit(0)
     }
 
     // MARK: - Translocation
@@ -93,8 +104,7 @@ enum LaunchGuard {
 
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else {
-            NSApp.terminate(nil)
-            return
+            quit()
         }
 
         do {
@@ -116,7 +126,7 @@ enum LaunchGuard {
                let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
                 NSWorkspace.shared.open(downloads)
             }
-            NSApp.terminate(nil)
+            quit()
         }
     }
 
@@ -144,11 +154,11 @@ enum LaunchGuard {
 
         // Replacing a bundle while it is executing pulls the code out from
         // under the running process. If a copy is already installed and live,
-        // that copy is the one the user wants — hand over to it instead.
+        // that copy is the one the user wants — hand over and stop here rather
+        // than returning a path the caller would then try to launch again.
         if let installed = runningInstance(at: destination) {
             installed.activate()
-            NSApp.terminate(nil)
-            return destination
+            quit()
         }
 
         if fileManager.fileExists(atPath: destination.path) {
@@ -159,7 +169,7 @@ enum LaunchGuard {
         // A programmatic copy keeps the quarantine flag, and a quarantined app
         // gets translocated again — which would land us right back here. Finder
         // clears this when *it* moves an app; we have to do it ourselves.
-        clearQuarantine(at: destination)
+        try clearQuarantine(at: destination)
         return destination
     }
 
@@ -173,20 +183,38 @@ enum LaunchGuard {
         }
     }
 
-    private static func clearQuarantine(at url: URL) {
+    /// Removes the quarantine flag, or throws.
+    ///
+    /// Swallowing a failure here is worse than it looks: the copy keeps its
+    /// quarantine bit, macOS translocates it on the next launch, and the user
+    /// is offered "Move to Applications" again — for ever, with nothing ever
+    /// explaining why.
+    private static func clearQuarantine(at url: URL) throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
         process.arguments = ["-dr", "com.apple.quarantine", url.path]
-        try? process.run()
+        try process.run()
         process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw CocoaError(.fileWriteUnknown, userInfo: [
+                NSLocalizedDescriptionKey:
+                    "Could not clear the quarantine flag (xattr exited \(process.terminationStatus))."
+            ])
+        }
     }
 
-    private static func relaunch(at url: URL) {
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, _ in
-            Task { @MainActor in NSApp.terminate(nil) }
-        }
+    /// Opens the installed copy and ends this one.
+    ///
+    /// `NSWorkspace.openApplication` reports back through a completion handler,
+    /// which needs an event loop this process has not started yet. `open` is
+    /// synchronous and needs nothing.
+    private static func relaunch(at url: URL) -> Never {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = [url.path]
+        try? process.run()
+        process.waitUntilExit()
+        quit()
     }
 
     // MARK: - First launch

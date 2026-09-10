@@ -69,6 +69,14 @@ done
 
 # ------------------------------------------------------------ smoke launch
 step "Smoke test: launch and confirm it stays up"
+# The build under test shares its bundle id with any copy already installed, and
+# the app hands over to a running instance and exits. Leaving one running makes
+# the smoke test report a crash that never happened — which blocked a release.
+if pgrep -x WindowPin >/dev/null 2>&1; then
+  printf '    stopping the running copy first, so the smoke build is not mistaken for a duplicate\n'
+  pkill -x WindowPin || true
+  sleep 2
+fi
 CRASH_DIR="${HOME}/Library/Logs/DiagnosticReports"
 BEFORE="$(ls "${CRASH_DIR}" 2>/dev/null | grep -c '^WindowPin-' || true)"
 "${BIN}" >/dev/null 2>&1 &
