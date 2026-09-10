@@ -1,4 +1,4 @@
-.PHONY: build app assets run clean logs
+.PHONY: build app assets run release release-check clean logs
 
 # Compile only — fastest feedback loop while editing.
 build:
@@ -14,6 +14,14 @@ app:
 
 run: app
 	open build/WindowPin.app
+
+# Build, verify, notarize and publish. Pass VERSION=1.0.1.
+release:
+	./Scripts/release.sh $(VERSION)
+
+# Same checks, publishes nothing.
+release-check:
+	./Scripts/release.sh $(VERSION) --dry-run
 
 clean:
 	rm -rf .build build

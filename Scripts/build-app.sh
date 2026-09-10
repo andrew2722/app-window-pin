@@ -37,7 +37,8 @@ if [[ -z "${CODESIGN_IDENTITY:-}" ]]; then
 fi
 APP_NAME="WindowPin"
 BUNDLE_ID="com.windowpin.app"
-VERSION="1.0.0"
+# Overridable so Scripts/release.sh can stamp the version it is publishing.
+VERSION="${VERSION:-1.0.0}"
 BUILD_NUMBER="1"
 
 ICON_SRC="${ROOT}/Resources/AppIcon.icns"
