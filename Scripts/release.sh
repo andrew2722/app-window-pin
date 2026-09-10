@@ -45,9 +45,13 @@ ok "notarytool credentials"
 [[ -d "${SITE_REPO}" ]] || fail "landing repo not found at ${SITE_REPO}"
 ok "landing repo at ${SITE_REPO}"
 
-if [[ -n "$(cd "${ROOT}" && git status --porcelain)" ]]; then
-  printf '    note: uncommitted changes in the app repo will be included\n'
+# Publishing whatever happens to be in the working tree is how unfinished work
+# reaches users. Commit first, deliberately.
+if [[ -n "$(cd "${ROOT}" && git status --porcelain)" ]] && [[ "${DRY_RUN}" != "--dry-run" ]]; then
+  (cd "${ROOT}" && git status --short | head -10)
+  fail "the app repo has uncommitted changes — commit or stash them, then release"
 fi
+ok "working tree is clean"
 
 # ------------------------------------------------------------------- build
 step "Building ${VERSION}"
@@ -90,17 +94,23 @@ xcrun notarytool submit "${SUBMIT_ZIP}" --keychain-profile "${KEYCHAIN_PROFILE}"
 grep -q "status: Accepted" /tmp/notary.log || fail "Apple did not accept the build — see /tmp/notary.log"
 ok "accepted"
 
-# Apple accepts the build before the ticket is fetchable, so stapling right
-# after notarization fails with error 73 roughly half the time. Retry rather
-# than abandoning a release that is actually fine.
+# Staple in a scratch directory and copy back. Stapling in place inside the
+# build directory fails with "Could not remove existing ticket ... No such file
+# or directory" (error 73), while the identical bundle staples fine elsewhere.
+# Apple also publishes the ticket slightly after accepting, so retry.
+STAGE="$(mktemp -d)"
+ditto "${APP}" "${STAGE}/WindowPin.app"
 STAPLED=0
 for attempt in $(seq 1 8); do
-  if xcrun stapler staple "${APP}" >/dev/null 2>&1; then STAPLED=1; break; fi
-  printf '    ticket not published yet, retrying (%d/8)\n' "${attempt}"
+  if xcrun stapler staple "${STAGE}/WindowPin.app" >/dev/null 2>&1; then STAPLED=1; break; fi
+  printf '    ticket not ready, retrying (%d/8)\n' "${attempt}"
   sleep 15
 done
 [[ "${STAPLED}" -eq 1 ]] || fail "could not staple the ticket after 8 attempts"
-xcrun stapler validate "${APP}" >/dev/null || fail "stapled ticket does not validate"
+xcrun stapler validate "${STAGE}/WindowPin.app" >/dev/null || fail "stapled ticket does not validate"
+rm -rf "${APP}"
+ditto "${STAGE}/WindowPin.app" "${APP}"
+rm -rf "${STAGE}"
 ok "ticket stapled (opens offline)"
 
 # ------------------------------------------------------- gatekeeper as user
@@ -140,7 +150,6 @@ ok "caption now reads ${VERSION} · ${SIZE_MB} MB"
 ok "landing page pushed"
 
 step "Publishing the GitHub release"
-(cd "${ROOT}" && git add -A && git commit -q -m "release: ${VERSION}" 2>/dev/null || true)
 (cd "${ROOT}" && git push -q origin main)
 if gh release view "v${VERSION}" >/dev/null 2>&1; then
   gh release upload "v${VERSION}" "${ZIP}" --clobber >/dev/null
