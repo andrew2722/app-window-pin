@@ -8,13 +8,16 @@ import SwiftUI
 /// - **Panel**: a floating always-on-top box you drop content into (ScreenCaptureKit).
 @main
 struct WindowPinApp: App {
+    /// Runs before any model is built: a translocated launch has to stop here,
+    /// because permissions granted to a randomised path cannot survive.
+    @State private var canRun = LaunchGuard.check()
     @State private var model = AppModel()
     @State private var panelModel = PanelModel()
     @State private var controllerPanel = FloatingControllerPanel()
     @State private var contentPanel = FloatingContentPanel()
 
     var body: some Scene {
-        MenuBarExtra {
+        MenuBarExtra(isInserted: $canRun) {
             MenuBarView(
                 onToggleFloatingPanel: { controllerPanel.toggle(model: model) },
                 onToggleContentPanel: { contentPanel.toggle(model: panelModel) }
