@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Window Pin — hold any macOS window in place</title>
+<meta name="description" content="A macOS menu bar utility that holds another app's window at a fixed position and size, plus an always-on-top panel you can drop links, media or a live window mirror into.">
+<meta property="og:title" content="Window Pin">
+<meta property="og:description" content="Hold any app's window in place — and float your own panel on top.">
+<meta property="og:image" content="https://andrew2722.github.io/app-window-pin/images/hero.png">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%235B8DEF'/><path d='M19 7l6 6-3 1-1 6-4-4-5 5 5-5-4-4 6-1 1-3z' fill='%23F5B942'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* Palette taken from the app icon so the site and the product match. */
+    --bg:#111726;
+    --bg-alt:#161E32;
+    --surface:#1D2740;
+    --line:#2A3654;
+    --text:#F1F5F9;
+    --muted:#9FB0CC;
+    --blue:#5B8DEF;
+    --blue-soft:#8FB4F8;
+    --gold:#F5B942;
+    --gold-ink:#231803;
+    --radius:14px;
+    --maxw:1080px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    font-size:16px;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:var(--maxw);margin:0 auto;padding-inline:24px}
+  a{color:var(--blue-soft)}
+  a:focus-visible,button:focus-visible{outline:3px solid var(--gold);outline-offset:3px;border-radius:6px}
+  img{max-width:100%;height:auto;display:block}
+
+  /* Header */
+  header{position:sticky;top:0;z-index:20;background:rgba(17,23,38,.86);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  .bar{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:60px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.01em;color:var(--text);text-decoration:none}
+  .ghost{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;border:1px solid var(--line);border-radius:10px;color:var(--text);text-decoration:none;font-size:14px;font-weight:500;transition:border-color .2s ease,background .2s ease}
+  .ghost:hover{background:var(--surface);border-color:var(--blue)}
+
+  /* Hero */
+  .hero{padding-block:72px 56px;text-align:center}
+  h1{font-size:clamp(36px,6vw,60px);line-height:1.08;letter-spacing:-.03em;margin:0 0 16px;font-weight:800}
+  .lede{font-size:clamp(17px,2.2vw,21px);color:var(--muted);max-width:62ch;margin:0 auto 32px}
+  .cta-row{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;align-items:center}
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:10px;
+    min-height:52px;padding:0 26px;border-radius:12px;
+    font-size:16px;font-weight:600;text-decoration:none;cursor:pointer;border:0;
+    transition:transform .2s ease,filter .2s ease;
+  }
+  .btn-primary{background:var(--gold);color:var(--gold-ink)}
+  .btn-primary:hover{filter:brightness(1.07);transform:translateY(-2px)}
+  .btn-secondary{background:transparent;color:var(--text);border:1px solid var(--line)}
+  .btn-secondary:hover{background:var(--surface);border-color:var(--blue)}
+  .meta{margin-top:14px;font-size:14px;color:var(--muted)}
+  .hero-art{margin-top:44px;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+
+  /* Sections */
+  section{padding-block:64px;border-top:1px solid var(--line)}
+  h2{font-size:clamp(26px,3.6vw,36px);line-height:1.2;letter-spacing:-.02em;margin:0 0 12px;font-weight:700}
+  .sub{color:var(--muted);max-width:64ch;margin:0 0 36px}
+  .grid{display:grid;gap:20px}
+  @media(min-width:760px){.grid-2{grid-template-columns:1fr 1fr}.grid-3{grid-template-columns:repeat(3,1fr)}}
+  .card{background:var(--bg-alt);border:1px solid var(--line);border-radius:var(--radius);padding:26px}
+  .card h3{margin:14px 0 8px;font-size:19px;font-weight:650;letter-spacing:-.01em}
+  .card p{margin:0;color:var(--muted);font-size:15px}
+  .ico{width:34px;height:34px;color:var(--blue)}
+  .tag{display:inline-block;margin-top:14px;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--blue-soft);background:rgba(91,141,239,.12);border:1px solid rgba(91,141,239,.3);padding:4px 10px;border-radius:999px}
+
+  /* Steps */
+  ol.steps{counter-reset:s;list-style:none;margin:0;padding:0;display:grid;gap:16px}
+  ol.steps li{counter-increment:s;background:var(--bg-alt);border:1px solid var(--line);border-radius:var(--radius);padding:22px 22px 22px 66px;position:relative}
+  ol.steps li::before{
+    content:counter(s);position:absolute;left:22px;top:20px;
+    width:30px;height:30px;border-radius:50%;background:var(--blue);color:#08101F;
+    display:grid;place-items:center;font-weight:700;font-size:14px;
+  }
+  ol.steps strong{display:block;margin-bottom:4px;font-size:16px}
+  ol.steps p{margin:0;color:var(--muted);font-size:15px}
+  code,kbd{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em;background:#0C1120;border:1px solid var(--line);padding:2px 7px;border-radius:6px;color:#CFE0FF}
+  pre{background:#0C1120;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:12px 0 0}
+  pre code{background:none;border:0;padding:0}
+
+  /* Honest limits */
+  .limit{display:flex;gap:14px;align-items:flex-start;padding:18px 0;border-bottom:1px solid var(--line)}
+  .limit:last-child{border-bottom:0}
+  .limit svg{flex:0 0 auto;width:20px;height:20px;margin-top:3px;color:var(--gold)}
+  .limit p{margin:0;color:var(--muted);font-size:15px}
+  .limit b{color:var(--text);font-weight:600}
+
+  .note{background:rgba(245,185,66,.08);border:1px solid rgba(245,185,66,.34);border-radius:var(--radius);padding:20px}
+  .note h3{margin:0 0 8px;font-size:17px;color:var(--gold)}
+  .note p{margin:0 0 8px;color:var(--muted);font-size:15px}
+  .note p:last-child{margin-bottom:0}
+
+  footer{border-top:1px solid var(--line);padding-block:36px;color:var(--muted);font-size:14px}
+  .foot{display:flex;flex-wrap:wrap;gap:14px;justify-content:space-between;align-items:center}
+
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important}
+    html{scroll-behavior:auto}
+    .btn:hover{transform:none}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap bar">
+    <a class="brand" href="#top">
+      <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#5B8DEF"/><path d="M19 7l6 6-3 1-1 6-4-4-5 5 5-5-4-4 6-1 1-3z" fill="#F5B942"/></svg>
+      Window Pin
+    </a>
+    <a class="ghost" href="https://github.com/andrew2722/app-window-pin">
+      <svg class="ico" style="width:18px;height:18px;color:currentColor" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1.1-.8.1-.7.1-.7 1.2.1 1.9 1.2 1.9 1.2 1.1 1.9 2.9 1.4 3.6 1 .1-.8.4-1.4.8-1.7-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 5.2 18.3 5.5 18.3 5.5c.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .5Z"/></svg>
+      Source
+    </a>
+  </div>
+</header>
+
+<main id="top">
+
+  <div class="wrap hero">
+    <h1>Hold any window exactly where you put it.</h1>
+    <p class="lede">Window Pin locks another app's window to a fixed position and size — and gives you an always-on-top panel to drop a link, a PDF, a video, or a live mirror of any window into.</p>
+
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://github.com/andrew2722/app-window-pin/releases/latest/download/WindowPin.zip">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download for macOS
+      </a>
+      <a class="btn btn-secondary" href="#install">How to install</a>
+    </div>
+    <p class="meta">Free and open source · macOS 14 Sonoma or later · Apple Silicon &amp; Intel</p>
+
+    <div class="hero-art">
+      <img src="images/hero.png" alt="Window Pin app icon beside its name and the tagline: hold any app's window in place, and float your own panel on top." width="1280" height="400">
+    </div>
+  </div>
+
+  <section>
+    <div class="wrap">
+      <h2>Two tools, one menu bar icon</h2>
+      <p class="sub">They work independently and need different permissions — neither blocks the other.</p>
+
+      <div class="grid grid-2">
+        <div class="card">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M16 14l4-4"/></svg>
+          <h3>Pin</h3>
+          <p>Put a Chrome window bottom-right at 420&times;700 and it stays there. Move it and it snaps back. Snap presets are computed from the usable screen area, so the menu bar and Dock are respected automatically — across every display.</p>
+          <span class="tag">Accessibility permission</span>
+        </div>
+        <div class="card">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M8 3h12a2 2 0 0 1 2 2v10"/></svg>
+          <h3>Floating Panel</h3>
+          <p>A small window that stays above everything, on every Desktop. Drop a link and it opens as a real web page you can click and type in. Drop an image, PDF or video and it plays. Or mirror another app's window live.</p>
+          <span class="tag">Screen Recording for mirroring</span>
+        </div>
+      </div>
+
+      <div class="hero-art" style="margin-top:24px">
+        <img src="images/overview.png" alt="Illustration: the Floating Panel showing a video and a browser window, next to a second window pinned to a fixed frame." width="1280" height="620">
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>What you get</h2>
+      <p class="sub">Built with Swift 6 and public APIs only — no private frameworks.</p>
+      <div class="grid grid-3">
+        <div class="card">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><polyline points="8 11 12 15 16 11"/><rect x="3" y="17" width="18" height="4" rx="1"/></svg>
+          <h3>Drop anything in</h3>
+          <p>Links, images, PDFs, video and audio, or selected text. Type a URL straight into the panel's address bar.</p>
+        </div>
+        <div class="card">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          <h3>Corner snapping</h3>
+          <p>Top-left through bottom-right plus centre, at 25% / 33% / 50% width, portrait, or a size you type.</p>
+        </div>
+        <div class="card">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+          <h3>Real multi-display</h3>
+          <p>Displays above, below or left of your main screen work correctly. Unplug one and a pinned window comes back rather than stranding off-screen.</p>
+        </div>
+        <div class="card">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></svg>
+          <h3>Keys reach the mirror</h3>
+          <p>Space, arrows, <kbd>f</kbd> and <kbd>m</kbd> are forwarded to the mirrored window — pause a video without leaving what you're doing.</p>
+        </div>
+        <div class="card">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          <h3>Idles at nothing</h3>
+          <p>Holding a window costs about 0.25% of one core. It listens for window events instead of polling.</p>
+        </div>
+        <div class="card">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <h3>Nothing leaves your Mac</h3>
+          <p>No account, no telemetry, no network calls except the pages you choose to open in the panel.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>What it can't do</h2>
+      <p class="sub">These are macOS limits, measured rather than guessed. Better you know before downloading.</p>
+
+      <div class="limit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>
+        <p><b>It can't force another app's window to stay on top.</b> macOS has no public API to change another application's window level. That's exactly why the Floating Panel exists — mirroring into a window we own is the honest way to get always-on-top.</p>
+      </div>
+      <div class="limit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>
+        <p><b>A mirror is view-only.</b> Keyboard input is forwarded, but synthesised mouse clicks are discarded by macOS even when the target app is frontmost. Clicking the mirror takes you to the real window instead. For web pages, open the link in the panel — that's fully interactive.</p>
+      </div>
+      <div class="limit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>
+        <p><b>A window on another Desktop can't be mirrored.</b> macOS only draws the Desktop you're looking at, so there are no frames to capture. The panel detects this and offers to switch you there.</p>
+      </div>
+      <div class="limit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>
+        <p><b>Full-screen windows can't be moved or resized</b> by any app. Take the window out of full screen first.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap">
+      <h2>Install</h2>
+      <p class="sub">Takes about a minute. The app lives in your menu bar — there's no Dock icon.</p>
+
+      <ol class="steps">
+        <li>
+          <strong>Download and unzip</strong>
+          <p>Drag <code>WindowPin.app</code> into your <code>Applications</code> folder, then open it. Look for the pin icon in your menu bar.</p>
+        </li>
+        <li>
+          <strong>Allow Accessibility</strong>
+          <p>Needed to move and resize other apps' windows. The app will offer to open the right settings pane: <em>System Settings → Privacy &amp; Security → Accessibility</em>, then switch Window Pin on.</p>
+        </li>
+        <li>
+          <strong>Allow Screen Recording — only if you want mirroring</strong>
+          <p>Pinning works without it. macOS reads this permission only at launch, so quit and reopen Window Pin after enabling it.</p>
+        </li>
+      </ol>
+
+      <div class="note" style="margin-top:26px" id="gatekeeper">
+        <h3>If macOS says the app can't be opened</h3>
+        <p>Right-click <code>WindowPin.app</code> and choose <b>Open</b>, then confirm. You only need to do this once.</p>
+        <p>If that doesn't appear, go to <em>System Settings → Privacy &amp; Security</em>, scroll down, and click <b>Open Anyway</b>.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Build it yourself</h2>
+      <p class="sub">Swift Package Manager, no dependencies. If you'd rather not run a downloaded binary, this takes one command.</p>
+<pre><code>git clone https://github.com/andrew2722/app-window-pin.git
+cd app-window-pin
+make app
+open build/WindowPin.app</code></pre>
+      <p class="meta" style="margin-top:14px">Requires Xcode 16 or later. <code>make run</code> does both steps.</p>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <span>Window Pin — free and open source.</span>
+    <span><a href="https://github.com/andrew2722/app-window-pin">GitHub</a> · <a href="https://github.com/andrew2722/app-window-pin/releases">Releases</a> · <a href="https://github.com/andrew2722/app-window-pin/issues">Report an issue</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
