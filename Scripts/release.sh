@@ -28,6 +28,15 @@ APP="${ROOT}/build/WindowPin.app"
 ZIP="${ROOT}/build/WindowPin.zip"
 BIN="${APP}/Contents/MacOS/WindowPin"
 
+# Sparkle's tools come with the resolved package rather than being installed.
+SPARKLE_BIN="${ROOT}/.build/artifacts/sparkle/Sparkle/bin"
+# Updates are fetched from a versioned path, never from the stable
+# WindowPin.zip the download button points at. The appcast carries a signature
+# of exact bytes, so if a CDN ever served a cached zip against a fresh appcast
+# the signature would not match and the update would be refused — a filename
+# that changes with every release makes that impossible.
+UPDATE_NAME="WindowPin-${VERSION}.zip"
+
 step() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
 fail() { printf '\033[31mFAILED: %s\033[0m\n' "$1" >&2; exit 1; }
 ok()   { printf '    ok  %s\n' "$1"; }
@@ -44,6 +53,17 @@ xcrun notarytool history --keychain-profile "${KEYCHAIN_PROFILE}" >/dev/null 2>&
 ok "notarytool credentials"
 [[ -d "${SITE_REPO}" ]] || fail "landing repo not found at ${SITE_REPO}"
 ok "landing repo at ${SITE_REPO}"
+
+# Checked before anything is built, because the alternative is discovering it
+# after ten minutes of notarization.
+[[ -x "${SPARKLE_BIN}/sign_update" ]] \
+  || fail "Sparkle's tools are missing — run 'swift package resolve' in ${ROOT}"
+"${SPARKLE_BIN}/generate_keys" -p >/dev/null 2>&1 \
+  || fail "no update signing key in the keychain. It was created once with
+    ${SPARKLE_BIN}/generate_keys
+  and every published update must be signed with it, or installed copies will
+  refuse the download."
+ok "update signing key"
 
 # Publishing whatever happens to be in the working tree is how unfinished work
 # reaches users. Commit first, deliberately.
@@ -66,6 +86,25 @@ for fw in AVKit AVFoundation PDFKit WebKit ScreenCaptureKit; do
   otool -L "${BIN}" | grep -q "/${fw}.framework/" || fail "${fw} is not linked — a view using it will abort at runtime"
   ok "${fw}"
 done
+
+# The updater is a framework carried inside the bundle, not a system library:
+# if the copy step ever silently produced nothing, the app would launch fine
+# here and simply never update anyone. Check the bundle, not the build log.
+step "Verifying the updater is embedded"
+SPARKLE_IN_APP="${APP}/Contents/Frameworks/Sparkle.framework"
+[[ -d "${SPARKLE_IN_APP}" ]] || fail "Sparkle.framework is not in the bundle — nobody would ever get an update"
+otool -L "${BIN}" | grep -q "Sparkle.framework" || fail "the binary does not link Sparkle"
+codesign --verify --strict "${SPARKLE_IN_APP}" 2>/dev/null || fail "the embedded Sparkle.framework is not correctly signed"
+FEED="$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "${APP}/Contents/Info.plist" 2>/dev/null || true)"
+[[ -n "${FEED}" ]] || fail "no SUFeedURL in Info.plist"
+PUBKEY="$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "${APP}/Contents/Info.plist" 2>/dev/null || true)"
+[[ -n "${PUBKEY}" ]] || fail "no SUPublicEDKey in Info.plist"
+BUNDLE_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "${APP}/Contents/Info.plist")"
+# Sparkle compares this, not the marketing string. If it did not move, every
+# installed copy would conclude it already has this build.
+[[ "${BUNDLE_VERSION}" == "${VERSION}" ]] \
+  || fail "CFBundleVersion is '${BUNDLE_VERSION}', not '${VERSION}' — installed copies would not see this as newer"
+ok "framework embedded, signed, feed and key set, version ${BUNDLE_VERSION}"
 
 # ------------------------------------------------------------ smoke launch
 step "Smoke test: launch and confirm it stays up"
@@ -158,15 +197,69 @@ ok "accepted by Gatekeeper with the quarantine flag set"
 SIZE_MB="$(echo "scale=1; $(stat -f%z "${ZIP}") / 1048576" | bc)"
 ok "artifact: ${SIZE_MB} MB"
 
+# ------------------------------------------------------------- appcast
+# This is what already-installed copies read. Everything else in this script
+# serves someone who visits the download page; this serves everyone who visited
+# it once, months ago, and has not thought about it since.
+step "Signing the update and writing the appcast"
+SIGNATURE_LINE="$("${SPARKLE_BIN}/sign_update" "${ZIP}")"
+# sign_update prints the two attributes ready to paste, e.g.
+#   sparkle:edSignature="…" length="1234567"
+ED_SIGNATURE="$(sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p' <<<"${SIGNATURE_LINE}")"
+ED_LENGTH="$(sed -n 's/.*length="\([^"]*\)".*/\1/p' <<<"${SIGNATURE_LINE}")"
+[[ -n "${ED_SIGNATURE}" && -n "${ED_LENGTH}" ]] \
+  || fail "sign_update did not return a signature: ${SIGNATURE_LINE}"
+ok "signed (${ED_LENGTH} bytes)"
+
+APPCAST="${ROOT}/build/appcast.xml"
+# RFC 822 in the C locale: a date in the shell's language would not parse.
+PUB_DATE="$(LC_ALL=C date '+%a, %d %b %Y %H:%M:%S %z')"
+NOTES="${RELEASE_NOTES:-Improvements and fixes.}"
+cat > "${APPCAST}" <<XML
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Window Pin</title>
+    <link>${SITE_URL}/appcast.xml</link>
+    <description>Updates for Window Pin.</description>
+    <language>en</language>
+    <item>
+      <title>${VERSION}</title>
+      <pubDate>${PUB_DATE}</pubDate>
+      <sparkle:version>${VERSION}</sparkle:version>
+      <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[${NOTES}]]></description>
+      <enclosure url="${SITE_URL}/updates/${UPDATE_NAME}"
+                 sparkle:edSignature="${ED_SIGNATURE}"
+                 length="${ED_LENGTH}"
+                 type="application/octet-stream" />
+    </item>
+  </channel>
+</rss>
+XML
+xmllint --noout "${APPCAST}" || fail "the appcast is not well-formed XML"
+ok "appcast describes ${VERSION}"
+
 if [[ "${DRY_RUN}" == "--dry-run" ]]; then
   step "Dry run — nothing published"
   echo "    would publish ${VERSION} (${SIZE_MB} MB) to the release and ${SITE_URL}"
+  echo "    installed copies would be offered ${SITE_URL}/updates/${UPDATE_NAME}"
   exit 0
 fi
 
 # --------------------------------------------------------------- publish
 step "Publishing to the landing page"
 cp "${ZIP}" "${SITE_REPO}/WindowPin.zip"
+
+# The same bytes again under a name that will never be reused, plus the feed
+# that points at them. Older ones go: the appcast only ever offers the newest
+# build, so keeping them would just grow the repository.
+mkdir -p "${SITE_REPO}/updates"
+rm -f "${SITE_REPO}"/updates/WindowPin-*.zip
+cp "${ZIP}" "${SITE_REPO}/updates/${UPDATE_NAME}"
+cp "${APPCAST}" "${SITE_REPO}/appcast.xml"
+ok "update artifact and appcast staged"
 # Keep the caption honest; a stale version or size is a small lie on the page.
 /usr/bin/sed -i '' -E \
   "s#Version [0-9]+\.[0-9]+\.[0-9]+ · [0-9.]+ MB#Version ${VERSION} · ${SIZE_MB} MB#" \
@@ -200,9 +293,25 @@ for attempt in $(seq 1 12); do
   SERVED_SHA="$(curl -sL "${SITE_URL}/WindowPin.zip" | shasum -a 256 | cut -d' ' -f1)"
   if [[ "${SERVED_SHA}" == "${LOCAL_SHA}" ]]; then
     ok "the site serves this exact build"
-    printf '\n\033[32mReleased %s\033[0m  →  %s\n' "${VERSION}" "${SITE_URL}"
-    exit 0
+    break
   fi
   printf '    waiting for GitHub Pages to update (%d/12)\n' "${attempt}"
+  [[ "${attempt}" -lt 12 ]] || fail "the site is still serving an older build — check the Pages deployment"
 done
-fail "the site is still serving an older build — check the Pages deployment"
+
+# The download page being right says nothing about whether anyone who already
+# has the app will ever hear about this. Check the feed the way the app does.
+step "Verifying the update feed, the way an installed copy reads it"
+SERVED_APPCAST="$(curl -sfL "${SITE_URL}/appcast.xml")" || fail "the appcast is not being served"
+grep -q "<sparkle:version>${VERSION}</sparkle:version>" <<<"${SERVED_APPCAST}" \
+  || fail "the served appcast does not offer ${VERSION}"
+ok "feed offers ${VERSION}"
+
+ENCLOSURE_SHA="$(curl -sfL "${SITE_URL}/updates/${UPDATE_NAME}" | shasum -a 256 | cut -d' ' -f1)"
+[[ "${ENCLOSURE_SHA}" == "${LOCAL_SHA}" ]] \
+  || fail "the URL in the appcast does not serve this build — installed copies would reject the update"
+ok "the enclosure is this exact build, so its signature will verify"
+
+printf '\n\033[32mReleased %s\033[0m  →  %s\n' "${VERSION}" "${SITE_URL}"
+printf 'Installed copies will pick it up within a day, or immediately from the version in the panel.\n'
+exit 0

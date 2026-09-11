@@ -11,6 +11,10 @@ struct ControllerView: View {
 
     @Environment(AppModel.self) private var model
 
+    /// Absent in the preview harness, and in a build with no update feed —
+    /// the optional form of `@Environment` returns nil instead of trapping.
+    @Environment(UpdateService.self) private var updates: UpdateService?
+
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.l) {
             header
@@ -24,6 +28,7 @@ struct ControllerView: View {
         .frame(width: Theme.controlWidth)
         .animation(Theme.transition, value: model.pinService.state.isPinned)
         .animation(Theme.transition, value: model.size)
+        .animation(Theme.transition, value: updates?.pendingVersion)
         .onAppear { model.refresh() }
     }
 
@@ -305,18 +310,53 @@ struct ControllerView: View {
             }
 
             Spacer(minLength: Theme.Space.s)
+            versionLabel
+            Spacer(minLength: Theme.Space.s)
+            QuietButton(title: "Quit") { NSApplication.shared.terminate(nil) }
+        }
+    }
 
-            if let version = Self.appVersion {
+    /// The running version, and — where this build can update itself — the way
+    /// to ask for a new one now.
+    ///
+    /// New versions arrive on their own, so this is not the path anyone is
+    /// meant to depend on; it exists for the moment someone hears about a fix
+    /// and would rather not wait for the next scheduled check. That is why it
+    /// stays a version number rather than becoming a button competing with the
+    /// controls above it.
+    @ViewBuilder
+    private var versionLabel: some View {
+        if let updates, let pending = updates.pendingVersion {
+            // A version was found in the background and deliberately not shown
+            // over the user's work. Here it becomes the one thing in the footer
+            // worth clicking.
+            Button { updates.checkNow() } label: {
+                Label("Update to \(pending)", systemImage: "arrow.down.circle.fill")
+                    .font(.caption.weight(.medium))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Theme.brand)
+            .help("Install version \(pending)")
+        } else if let version = Self.appVersion {
+            if let updates {
+                Button { updates.checkNow() } label: {
+                    Text("v\(version)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .disabled(!updates.canCheck)
+                .help("Version \(version) — click to check for updates now")
+                .accessibilityLabel("Version \(version), check for updates")
+            } else {
                 Text("v\(version)")
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.tertiary)
                     .help("The version of Window Pin you are running")
                     // Read as "Version 1.0.3", not "Version v1.0.3".
                     .accessibilityLabel("Version \(version)")
-                Spacer(minLength: Theme.Space.s)
             }
-
-            QuietButton(title: "Quit") { NSApplication.shared.terminate(nil) }
         }
     }
 

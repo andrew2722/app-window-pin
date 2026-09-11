@@ -10,6 +10,7 @@
 #   CONFIGURATION      debug | release            (default: release)
 #   CODESIGN_IDENTITY  signing identity           (default: "-", ad-hoc)
 #   UNIVERSAL          1 to build arm64 + x86_64  (default: native only)
+#   SU_FEED_URL        appcast the app checks       (default: the download page)
 #
 set -euo pipefail
 
@@ -45,7 +46,21 @@ if [[ -z "${VERSION:-}" ]]; then
   VERSION="$(git -C "${ROOT}" describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')"
   VERSION="${VERSION:-0.0.0}"
 fi
-BUILD_NUMBER="1"
+# Sparkle decides whether a build is newer by comparing CFBundleVersion, so a
+# constant here would make every release look identical to the one installed
+# and no update would ever be offered. Tracking the marketing version keeps the
+# two in step and keeps the comparison meaningful.
+BUILD_NUMBER="${VERSION}"
+
+# Where the app looks for new versions, and the key it checks them against.
+#
+# The public half of the EdDSA pair belongs in the bundle; the private half
+# lives in the login keychain (created by Sparkle's generate_keys) and is what
+# Scripts/release.sh uses to sign each build. An update that does not verify
+# against this key is refused, so a compromised download page cannot push code
+# to anyone who already has the app.
+SU_FEED_URL="${SU_FEED_URL:-https://andrew2722.github.io/landing-page-app-window-pin/appcast.xml}"
+SU_PUBLIC_KEY="NPEZ4/4Sb/Br15YhOkwogP70Okyf3cd1fjkZ6VJ55DU="
 
 ICON_SRC="${ROOT}/Resources/AppIcon.icns"
 
@@ -81,6 +96,20 @@ else
   echo "warning: ${ICON_SRC} not found; bundle will have no icon" >&2
 fi
 
+# Sparkle travels inside the bundle: it is not just a library but a helper app
+# and two XPC services that do the actual replacing, and they have to be next
+# to the app they update. The executable finds it through the
+# @executable_path/../Frameworks rpath set in Package.swift.
+SPARKLE_FW="$(/usr/bin/find "${ROOT}/.build/artifacts" -type d -name 'Sparkle.framework' -path '*macos-*' -print -quit 2>/dev/null || true)"
+if [[ -z "${SPARKLE_FW}" ]]; then
+  echo "error: Sparkle.framework not found under .build/artifacts — run 'swift package resolve'" >&2
+  exit 1
+fi
+mkdir -p "${CONTENTS}/Frameworks"
+# ditto, not cp: a framework is a tree of symlinks (Versions/Current, and the
+# top-level entries pointing into it) and copying it flat breaks loading.
+ditto "${SPARKLE_FW}" "${CONTENTS}/Frameworks/Sparkle.framework"
+
 cat > "${CONTENTS}/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -114,6 +143,20 @@ cat > "${CONTENTS}/Info.plist" <<PLIST
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>Window Pin</string>
+	<key>SUFeedURL</key>
+	<string>${SU_FEED_URL}</string>
+	<key>SUPublicEDKey</key>
+	<string>${SU_PUBLIC_KEY}</string>
+	<!-- Check and install without asking. Someone who installed a menu bar
+	     utility months ago will not go looking for a download page, and the
+	     alternative to installing quietly is them running an old build for
+	     ever. -->
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
 </dict>
 </plist>
 PLIST
@@ -127,8 +170,28 @@ if [[ "${CODESIGN_IDENTITY}" != "-" ]]; then
   # real identity; ad-hoc builds stay unhardened so they keep launching locally.
   SIGN_ARGS+=(--options runtime --timestamp)
 fi
+# Nested code is signed first and the bundle last, because signing a bundle
+# seals the hashes of everything inside it — re-signing an inner component
+# afterwards invalidates the outer signature. `--deep` would do this in one
+# call but Apple has deprecated it and it applies the wrong flags to helper
+# apps, so each piece is named explicitly.
+SPARKLE_IN_APP="${CONTENTS}/Frameworks/Sparkle.framework"
+for nested in \
+  "${SPARKLE_IN_APP}/Versions/B/XPCServices/Downloader.xpc" \
+  "${SPARKLE_IN_APP}/Versions/B/XPCServices/Installer.xpc" \
+  "${SPARKLE_IN_APP}/Versions/B/Updater.app" \
+  "${SPARKLE_IN_APP}/Versions/B/Autoupdate" \
+  "${SPARKLE_IN_APP}"; do
+  [[ -e "${nested}" ]] || { echo "error: missing ${nested}" >&2; exit 1; }
+  codesign "${SIGN_ARGS[@]}" "${nested}"
+done
+
 codesign "${SIGN_ARGS[@]}" "${APP_DIR}"
 codesign --verify --verbose=1 "${APP_DIR}"
+# --deep on *verification* is not deprecated and is the only way to catch a
+# nested component that was left unsigned or signed with the wrong identity —
+# which notarization would otherwise reject minutes later.
+codesign --verify --deep --strict --verbose=1 "${APP_DIR}"
 
 # Launch Services caches a bundle's icon by path. Without this, a bundle that
 # was ever built without an icon keeps showing the blank generic tile in Finder

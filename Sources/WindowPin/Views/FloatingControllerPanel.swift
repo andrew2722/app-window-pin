@@ -10,23 +10,24 @@ import SwiftUI
 final class FloatingControllerPanel {
     private var panel: NSPanel?
 
-    func toggle(model: AppModel) {
+    func toggle(model: AppModel, updates: UpdateService) {
         if let panel, panel.isVisible {
             panel.orderOut(nil)
         } else {
-            show(model: model)
+            show(model: model, updates: updates)
         }
     }
 
-    func show(model: AppModel) {
-        let panel = self.panel ?? makePanel(model: model)
+    func show(model: AppModel, updates: UpdateService) {
+        let panel = self.panel ?? makePanel(model: model, updates: updates)
         self.panel = panel
         panel.orderFrontRegardless()
     }
 
-    private func makePanel(model: AppModel) -> NSPanel {
+    private func makePanel(model: AppModel, updates: UpdateService) -> NSPanel {
         let content = ControllerView(showsFloatingPanelButton: false)
             .environment(model)
+            .environment(updates)
 
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 320, height: 520),

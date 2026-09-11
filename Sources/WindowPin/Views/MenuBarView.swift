@@ -95,9 +95,25 @@ struct IconTile: View {
 /// Symbol, so the status item and the icon in System Settings read as one app.
 struct MenuBarIcon: View {
     let model: AppModel
+    /// A held update, shown as a dot. The menu bar icon is the only part of
+    /// this app that is always on screen, so it is the only place a background
+    /// find can be announced without interrupting anything.
+    var hasUpdate = false
 
     var body: some View {
         Image(nsImage: PinGlyph.menuBarImage(style))
+            .overlay(alignment: .topTrailing) {
+                if hasUpdate {
+                    // Shape, not colour: the menu bar renders this as a
+                    // template, so a tinted dot would come out the same black
+                    // or white as the pin. A dot where there was none is still
+                    // unmistakable.
+                    Circle()
+                        .frame(width: 4, height: 4)
+                        .offset(x: 2, y: -1)
+                        .accessibilityLabel("Update available")
+                }
+            }
     }
 
     private var style: PinGlyph.Style {

@@ -259,6 +259,52 @@ until you click Restore, no other application's window is touched.
 
 ---
 
+### Updating an installed copy
+
+```
+Services/UpdateService.swift     Sparkle wiring, gentle reminders
+Scripts/build-app.sh             embeds + signs Sparkle, writes the feed keys
+Scripts/release.sh               signs the artifact, writes and verifies appcast.xml
+```
+
+Installed copies update themselves. [Sparkle](https://sparkle-project.org)
+checks `appcast.xml` on the download site once a day and installs what it finds
+without asking, because someone who installed a menu bar utility months ago is
+never going to visit a download page again, and the alternative to installing
+quietly is them running an old build for ever.
+
+Every update is verified twice before it runs: an EdDSA signature made with a
+private key held only in the release machine's login keychain, checked against
+the `SUPublicEDKey` compiled into the copy already installed, and then the
+Developer ID code signature. Nothing the download page could serve — including
+a compromised download page — installs without the private key.
+
+Two details are load-bearing and easy to get wrong:
+
+- **`CFBundleVersion` must move with every release.** Sparkle compares that,
+  not `CFBundleShortVersionString`. It used to be hardcoded to `1`, which would
+  have made every release look identical to the one already installed and
+  offered an update to nobody. `build-app.sh` now sets both from `VERSION`, and
+  `release.sh` fails the release if they disagree.
+- **The appcast points at a versioned filename**, `updates/WindowPin-1.2.3.zip`,
+  never at the `WindowPin.zip` the download button uses. The appcast carries a
+  signature of exact bytes, so a cache serving yesterday's zip against today's
+  feed would fail the signature check and silently strand everyone. A URL that
+  changes with every release cannot be stale.
+
+A background find is deliberately *not* shown over the user's work. This app has
+no Dock icon and no window, so Sparkle's default — open an update window and
+wait — puts a question behind whatever the user is doing (Sparkle itself logs a
+warning about exactly this for background apps). Instead the find is held, a dot
+appears on the menu bar icon, and the version in the controller becomes
+*Update to 1.2.3*. Clicking either hands back to Sparkle.
+
+Not the Mac App Store: sandboxing is mandatory there, and it forbids both
+controlling other applications' windows and posting synthetic key events — the
+entire pinning half plus mirror key forwarding.
+
+---
+
 ### The floating panel
 
 ```

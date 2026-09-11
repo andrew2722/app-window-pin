@@ -15,17 +15,22 @@ struct WindowPinApp: App {
     @State private var panelModel = PanelModel()
     @State private var controllerPanel = FloatingControllerPanel()
     @State private var contentPanel = FloatingContentPanel()
+    /// Built after `LaunchGuard`: a translocated copy is about to move itself
+    /// and relaunch, and must not start an updater that would then be checking
+    /// on behalf of a bundle that is going away.
+    @State private var updates = UpdateService()
 
     var body: some Scene {
         MenuBarExtra(isInserted: $canRun) {
             MenuBarView(
-                onToggleFloatingPanel: { controllerPanel.toggle(model: model) },
+                onToggleFloatingPanel: { controllerPanel.toggle(model: model, updates: updates) },
                 onToggleContentPanel: { contentPanel.toggle(model: panelModel) }
             )
             .environment(model)
             .environment(panelModel)
+            .environment(updates)
         } label: {
-            MenuBarIcon(model: model)
+            MenuBarIcon(model: model, hasUpdate: updates.pendingVersion != nil)
         }
         .menuBarExtraStyle(.window)
     }
