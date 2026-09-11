@@ -147,14 +147,16 @@ cat > "${CONTENTS}/Info.plist" <<PLIST
 	<string>${SU_FEED_URL}</string>
 	<key>SUPublicEDKey</key>
 	<string>${SU_PUBLIC_KEY}</string>
-	<!-- Check and install without asking. Someone who installed a menu bar
-	     utility months ago will not go looking for a download page, and the
-	     alternative to installing quietly is them running an old build for
-	     ever. -->
+	<!-- Look for new versions on our own, but never replace the app without
+	     being asked. Someone who installed a menu bar utility months ago will
+	     not go looking for a download page, so the checking has to be
+	     automatic; the installing is still their decision. The find is shown
+	     as a dot on the menu bar icon rather than a window over their work —
+	     see UpdateService. -->
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUAutomaticallyUpdate</key>
-	<true/>
+	<false/>
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
 </dict>

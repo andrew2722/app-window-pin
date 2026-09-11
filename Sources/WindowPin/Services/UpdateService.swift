@@ -11,17 +11,19 @@ import Sparkle
 /// from, and so a build with no feed configured simply has no updater rather
 /// than a broken one.
 ///
-/// Updates normally install themselves in the background. The alternative —
-/// telling someone a new version exists and leaving them to download and
-/// replace the app by hand — is the situation this was written to end.
+/// Checking is automatic; installing is not. Someone who installed a menu bar
+/// utility months ago will never go looking for a download page, so the app has
+/// to notice new versions on its own — but replacing the app someone is in the
+/// middle of using is their call, not ours.
 @MainActor
 @Observable
 final class UpdateService {
     /// False while a check is already running, and in a build with no feed.
     private(set) var canCheck = false
 
-    /// Set when Sparkle found an update it wants to show and we asked to
-    /// present it ourselves — see `UpdateUserDriverDelegate`.
+    /// The version waiting to be installed, once a background check has found
+    /// one. This is the normal path, not an edge case: scheduled finds are
+    /// always held for the user rather than shown over their work.
     private(set) var pendingVersion: String?
 
     /// `nil` outside an app bundle, or when this build ships without a feed.
@@ -57,10 +59,11 @@ final class UpdateService {
         }
     }
 
-    /// Checks now, showing Sparkle's own progress and release notes.
+    /// Checks now, showing Sparkle's own progress, release notes and the
+    /// install prompt.
     ///
-    /// Also the way an update we are holding gets shown: when a scheduled check
-    /// finds one, Sparkle waits for exactly this call to display it.
+    /// Also how a held update finally gets shown: after a scheduled check finds
+    /// one and we decline to present it, Sparkle waits for exactly this call.
     func checkNow() {
         guard let controller else { return }
         NSApp.activate(ignoringOtherApps: true)
@@ -95,7 +98,9 @@ final class UpdateService {
 /// question nobody saw — Sparkle logs a warning about exactly this. So a
 /// background find is held instead, and shown in the two places the user
 /// already looks at this app: a dot on the menu bar icon and the version in the
-/// controller. A find the user is looking at is left to Sparkle to present.
+/// controller. Clicking either hands straight back to Sparkle, which then asks
+/// whether to install. A find the user is already looking at is left to Sparkle
+/// to present, since interrupting nothing is not an interruption.
 private final class UpdateUserDriverDelegate: NSObject, SPUStandardUserDriverDelegate {
     /// Set immediately after the updater is constructed; `weak` because the
     /// service owns this delegate.

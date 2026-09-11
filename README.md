@@ -267,11 +267,11 @@ Scripts/build-app.sh             embeds + signs Sparkle, writes the feed keys
 Scripts/release.sh               signs the artifact, writes and verifies appcast.xml
 ```
 
-Installed copies update themselves. [Sparkle](https://sparkle-project.org)
-checks `appcast.xml` on the download site once a day and installs what it finds
-without asking, because someone who installed a menu bar utility months ago is
-never going to visit a download page again, and the alternative to installing
-quietly is them running an old build for ever.
+Installed copies keep themselves current. [Sparkle](https://sparkle-project.org)
+checks `appcast.xml` on the download site once a day, because someone who
+installed a menu bar utility months ago is never going to visit a download page
+again. Installing is still the user's decision: replacing an app while someone
+is in the middle of using it is not ours to make.
 
 Every update is verified twice before it runs: an EdDSA signature made with a
 private key held only in the release machine's login keychain, checked against
@@ -292,12 +292,15 @@ Two details are load-bearing and easy to get wrong:
   feed would fail the signature check and silently strand everyone. A URL that
   changes with every release cannot be stale.
 
-A background find is deliberately *not* shown over the user's work. This app has
+How the question gets asked depends on whether the user is looking. This app has
 no Dock icon and no window, so Sparkle's default — open an update window and
-wait — puts a question behind whatever the user is doing (Sparkle itself logs a
-warning about exactly this for background apps). Instead the find is held, a dot
-appears on the menu bar icon, and the version in the controller becomes
-*Update to 1.2.3*. Clicking either hands back to Sparkle.
+wait — puts a question behind whatever the user is doing when the find happens
+in the background (Sparkle itself logs a warning about exactly this for
+background apps). So `standardUserDriverShouldHandleShowingScheduledUpdate`
+returns `immediateFocus`: a find while the user is already in front of the app
+is left to Sparkle to present, and any other find is held, surfacing as a dot on
+the menu bar icon and *Update to 1.2.3* in the controller. Clicking either hands
+back to Sparkle, which then asks.
 
 Not the Mac App Store: sandboxing is mandatory there, and it forbids both
 controlling other applications' windows and posting synthetic key events — the
