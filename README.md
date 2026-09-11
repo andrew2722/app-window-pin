@@ -292,15 +292,24 @@ Two details are load-bearing and easy to get wrong:
   feed would fail the signature check and silently strand everyone. A URL that
   changes with every release cannot be stale.
 
-How the question gets asked depends on whether the user is looking. This app has
-no Dock icon and no window, so Sparkle's default — open an update window and
-wait — puts a question behind whatever the user is doing when the find happens
-in the background (Sparkle itself logs a warning about exactly this for
-background apps). So `standardUserDriverShouldHandleShowingScheduledUpdate`
-returns `immediateFocus`: a find while the user is already in front of the app
-is left to Sparkle to present, and any other find is held, surfacing as a dot on
-the menu bar icon and *Update to 1.2.3* in the controller. Clicking either hands
-back to Sparkle, which then asks.
+What the user actually sees, measured rather than assumed, is Sparkle's own
+"Software Update" window. `standardUserDriverShouldHandleShowingScheduledUpdate`
+returns `immediateFocus`, meaning "you present it if the user is already looking
+at us, otherwise I will" — and in every check observed so far Sparkle reported
+`immediateFocus` as true, including for an app launched with `open -g` that
+never came to the front. So the held path below has not been seen to run.
+
+It is kept because the judgement behind it is still right: this app has no Dock
+icon and no window, so an update window opened while the user is deep in
+something else is a question asked behind their back, and Sparkle logs a warning
+about precisely this for background apps. When Sparkle does decline to present,
+the find is held and surfaces as a dot on the menu bar icon and *Update to
+1.2.3* in the controller, and clicking either hands back to Sparkle. Treat that
+as a fallback that has not been exercised, not as the normal path.
+
+`standardUserDriverWillHandleShowingUpdate` activates the app before Sparkle's
+window appears, so the prompt lands in front rather than behind — without it, a
+menu-bar-only app asks a question nobody sees.
 
 Not the Mac App Store: sandboxing is mandatory there, and it forbids both
 controlling other applications' windows and posting synthetic key events — the
