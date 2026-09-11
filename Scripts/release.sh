@@ -135,7 +135,7 @@ ok "stayed running, no crash report"
 step "Notarizing (this waits for Apple)"
 SUBMIT_ZIP="${ROOT}/build/WindowPin-submit.zip"
 rm -f "${SUBMIT_ZIP}"
-ditto -c -k --keepParent "${APP}" "${SUBMIT_ZIP}"
+ditto -c -k --sequesterRsrc --keepParent "${APP}" "${SUBMIT_ZIP}"
 # Upload and wait are separated on purpose. `--wait` folds them together, so a
 # dropped connection while waiting (HTTPClientError.connectTimeout) throws away
 # a submission that was uploaded fine and is already being processed.
@@ -185,14 +185,45 @@ ok "ticket stapled (opens offline)"
 # The decisive check: pretend to be someone who downloaded it in a browser.
 step "Gatekeeper check, as a downloader sees it"
 rm -f "${ZIP}"
-ditto -c -k --keepParent "${APP}" "${ZIP}"
+# --sequesterRsrc is not cosmetic. Extended attributes get stored as AppleDouble
+# "._name" companions, and macOS puts com.apple.provenance on every symlink at
+# the root of the embedded framework. Without sequestering, Archive Utility —
+# what a double-click uses — restores those companions as real files inside
+# Sparkle.framework, and a framework may not have unsealed files in its root:
+#
+#   rejected (unsealed contents present in the root directory of an embedded
+#   framework)
+#
+# 1.0.5 shipped exactly that and would not open for anyone. Sequestering moves
+# the companions into __MACOSX/, where they can do no harm. `xattr -cr` is not
+# an alternative; it cannot remove provenance from a symlink.
+ditto -c -k --sequesterRsrc --keepParent "${APP}" "${ZIP}"
+
 GK_DIR="$(mktemp -d)"
-ditto -x -k "${ZIP}" "${GK_DIR}"
-xattr -w com.apple.quarantine "0083;00000000;Safari;" "${GK_DIR}/WindowPin.app"
-spctl -a -vvv -t install "${GK_DIR}/WindowPin.app" 2>&1 | grep -q "accepted" \
+cp "${ZIP}" "${GK_DIR}/WindowPin.zip"
+xattr -w com.apple.quarantine "0081;00000000;Safari;" "${GK_DIR}/WindowPin.zip"
+# Unarchived by Archive Utility rather than ditto, because ditto merges
+# AppleDouble back into extended attributes correctly and so cannot see this
+# class of failure at all. The gate has to unpack the download the way the
+# person downloading it does.
+open -a "Archive Utility" "${GK_DIR}/WindowPin.zip"
+for attempt in $(seq 1 30); do
+  sleep 1
+  [[ -d "${GK_DIR}/WindowPin.app" ]] && break
+done
+[[ -d "${GK_DIR}/WindowPin.app" ]] || fail "Archive Utility did not unpack the download in 30s"
+
+STRAY="$(find "${GK_DIR}/WindowPin.app" -name '._*' 2>/dev/null | wc -l | tr -d ' ')"
+[[ "${STRAY}" -eq 0 ]] || {
+  find "${GK_DIR}/WindowPin.app" -name '._*' | head -5
+  fail "${STRAY} AppleDouble file(s) landed inside the bundle — the signature will not survive the download"
+}
+codesign --verify --deep --strict "${GK_DIR}/WindowPin.app" 2>&1 \
+  || fail "the signature does not survive being unzipped by Archive Utility"
+spctl -a -vvv -t exec "${GK_DIR}/WindowPin.app" 2>&1 | grep -q "accepted" \
   || fail "Gatekeeper rejects the download — do not publish this"
 rm -rf "${GK_DIR}"
-ok "accepted by Gatekeeper with the quarantine flag set"
+ok "unpacked by Archive Utility, signature intact, accepted by Gatekeeper"
 
 SIZE_MB="$(echo "scale=1; $(stat -f%z "${ZIP}") / 1048576" | bc)"
 ok "artifact: ${SIZE_MB} MB"
